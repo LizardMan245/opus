@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in Opus doesn't work as it should.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Opus version and build
+      description: Hold help on Opus's menu (synth + drum + tape + mixer) to see it, e.g. "opus 1, build 89".
+    validations:
+      required: true
+  - type: dropdown
+    id: before
+    attributes:
+      label: What was on the OP-1 before Opus
+      options:
+        - stock 246
+        - an older Opus
+        - op1r
+        - another mod
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The keys you pressed, in order, as far as you remember.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: screen
+    attributes:
+      label: A photo of the screen
+      description: If the OP-1 stopped at a black screen with white text, a photo of it helps most. Drag it in here.

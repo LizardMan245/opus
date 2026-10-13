@@ -1,0 +1,22 @@
+name: Plugin idea
+description: Something you'd like to see as an Opus plugin.
+labels: [idea]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What it does, and when you'd use it.
+    validations:
+      required: true
+  - type: textarea
+    id: controls
+    attributes:
+      label: How you'd play it
+      description: The keys or encoders you imagine for it (optional).
+  - type: checkboxes
+    id: build
+    attributes:
+      label: Building it
+      options:
+        - label: I'd like to build this myself once the plugin template is out

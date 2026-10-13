@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Get Opus (the patcher)
+    url: https://opus-op1.pages.dev/patcher/
+    about: Make Opus's update from your own stock firmware, in your browser.
+  - name: The OP-1 mod registry
+    url: https://github.com/LizardMan245/op1-mod-registry
+    about: Names and numbers that mods for 246 share.
