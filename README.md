@@ -2,6 +2,8 @@
 
 Mods for the original Teenage Engineering OP-1, firmware 246. By LizardMan.
 
+A hobby project, built in free time and at its own pace. Help is always welcome.
+
 **Opus 1** is out: new synth engines (dimension, and a guitar amp with a tuner), effects (bitcrush,
 chorus, plate, and a second effect behind every slot), scales and chords, tape undo and redo, preset
 rename and overwrite save, 100 sampler presets, your own colours, themes and start-up picture, and a
