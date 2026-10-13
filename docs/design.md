@@ -48,3 +48,17 @@ Many mod loaders remove a missing mod's content when a world loads (Minecraft an
 and says "incompatible preset" until the plugin comes back, then plays as before. Opus 1 already works
 this way for sounds from other firmware, and every preset saved with Opus 1 names the Opus parts it
 needs, so Opus 2 can tell what each sound is waiting for.
+
+## Costs and a memory budget: what the FM-1 scene found
+
+The M-VAVE FM-1's modding scene tried the same idea in October 2026. Felucca's plugin experiments
+([discussion #159](https://github.com/hugelton/Felucca/discussions/159)) ran engine code from its own
+flash slot and relocated it at install time, on a real FM-1. The code was small (a few KB); memory was
+the wall (about 50 KB for one engine), and the plan went on hold.
+
+**Opus:** memory gets planned before the plugin interface. The core keeps one shared budget, and each
+plugin's description file says what it costs: RAM, flash, CPU and the room its saved data takes. Opus
+checks the sum before it loads anything, and says which plugin doesn't fit. Opus 1 already measures
+two of these on the device (the CPU meter and the storage room).
+
+And a lesson about pace: Opus 2's first version will be small, and the roadmap has no dates.

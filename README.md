@@ -12,7 +12,7 @@ menu of its own. Make it from your own stock firmware with the patcher at
 files you copy onto the OP-1's disk, and Opus loads them at start-up. Add one, remove one, swap them,
 no reflashing.
 
-[Report a bug](https://github.com/LizardMan245/opus/issues/new?template=bug.yml) · [Suggest a plugin](https://github.com/LizardMan245/opus/issues/new?template=plugin-idea.yml) ·
+[Report a bug](https://github.com/LizardMan245/opus/issues/new?template=bug.yml) · [Ideas and questions](https://github.com/LizardMan245/opus/discussions) ·
 [Changelog](https://opus-op1.pages.dev/changelog/)
 
 ## Moving in and out
@@ -36,6 +36,8 @@ Opus is built so you can try it without risk and leave without losing anything.
   need, not by file name.
 - **Sharing a place.** Where it's safe, several plugins can attach to the same place in the firmware,
   in a set order. Where it isn't, Opus says no, with the reason, before anything breaks.
+- **Costs up front.** Each plugin says how much memory, flash and CPU it needs, and Opus keeps one
+  shared budget, so you know before adding a plugin whether it fits.
 - **Features by name.** Opus offers what it can do by name and version, and a plugin asks for what it
   needs, so plugins written today keep working on a newer Opus.
 - **Your sounds stay.** A sound that needs a plugin you've removed is kept exactly as it is, and plays
