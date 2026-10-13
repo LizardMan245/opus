@@ -77,9 +77,10 @@ everyone in the Custom Firmware thread on op-forums.
 
 ## Licence
 
-What's in this repository (the docs now, the plugin interface and templates as they come) is MIT:
-build plugins on it and license them however you like. The Opus firmware update and the patcher's data
-are © LizardMan, all rights reserved: please don't share them, link to the website instead.
+What's in this repository (the docs now, the plugin interface and template as they come) is
+[GPL-3.0](LICENSE): use it, change it and share it, and what you build on it stays open too. The Opus 1
+firmware update and the patcher's data are © LizardMan, all rights reserved for now: please don't share
+them, link to the website instead.
 
 Opus is an independent project, not affiliated with or endorsed by Teenage Engineering. OP-1 is a
 trademark of Teenage Engineering AB. There is no firmware in this repository.
