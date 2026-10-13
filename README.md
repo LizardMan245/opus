@@ -8,8 +8,9 @@ rename and overwrite save, 100 sampler presets, your own colours, themes and sta
 menu of its own. Make it from your own stock firmware with the patcher at
 **https://opus-op1.pages.dev**: it runs in your browser and nothing is uploaded.
 
-**Opus 2** is next: a plugin manager for the OP-1. Mods become files you copy onto the OP-1's disk,
-and Opus loads them at start-up. Add one, remove one, swap them, no reflashing.
+**Opus 2** is where this is going: not a bigger pack, but a plugin manager for the OP-1. Mods become
+files you copy onto the OP-1's disk, and Opus loads them at start-up. Add one, remove one, swap them,
+no reflashing.
 
 [Report a bug](https://github.com/LizardMan245/opus/issues/new?template=bug.yml) · [Suggest a plugin](https://github.com/LizardMan245/opus/issues/new?template=plugin-idea.yml) ·
 [Changelog](https://opus-op1.pages.dev/changelog/)
