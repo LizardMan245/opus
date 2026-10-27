@@ -4,11 +4,11 @@ contact_links:
     url: https://github.com/LizardMan245/opus/discussions
     about: Plugin ideas, questions and things you made go to Discussions. Issues are for bugs.
   - name: Get Opus 2 (the patcher)
-    url: https://opus-op1.pages.dev/opus2/patcher/
-    about: Make Opus 2's update from your own stock firmware, in your browser.
-  - name: Get Opus (the patcher)
     url: https://opus-op1.pages.dev/patcher/
-    about: Make Opus's update from your own stock firmware, in your browser.
+    about: Make Opus 2's update from your own stock firmware, in your browser.
+  - name: Get Opus 1, legacy (the patcher)
+    url: https://opus-op1.pages.dev/opus1/patcher/
+    about: Make Opus 1's update from your own stock firmware, in your browser.
   - name: The OP-1 mod registry
     url: https://github.com/LizardMan245/op1-mod-registry
     about: Names and numbers that mods for 246 share.

@@ -2,7 +2,7 @@
 
 Mods for the original Teenage Engineering OP-1, firmware 246. By LizardMan.
 
-A hobby project, built in free time and at its own pace. Help is always welcome.
+A hobby project, built in free time and at its own pace. Help is always welcome, and if you'd like to support it, there's [Ko-fi](https://ko-fi.com/lizardman245).
 
 **Opus 2** is out as a beta: not a bigger pack, but a plugin manager for the OP-1. Its small core loads plugins,
 `.opmod` files you copy into a mods folder on the OP-1's disk. Add one, remove one, swap them, no reflashing. The
@@ -11,15 +11,15 @@ outatime (a time-travel synth engine), iter (the OP-1's own hidden engine) and a
 an alpha, runs op1r's and Hundekraft's synths and effects on Opus.
 
 - **The core:** make the update from your own stock firmware with the patcher at
-  **https://opus-op1.pages.dev/opus2/**. It runs in your browser and nothing is uploaded.
+  **https://opus-op1.pages.dev/patcher/**. It runs in your browser and nothing is uploaded.
 - **The plugins:** the starter pack, each plugin on its own and the bridge are in
   [Releases](https://github.com/LizardMan245/opus/releases).
 - **Your own plugins:** the [plugin kit](plugin-kit/) (GPL-3.0).
 
-**Opus 1** (1.0.1) stays on the site, one pack built and tested together: https://opus-op1.pages.dev
+**Opus 1** (1.0.1) stays on the site as legacy, one pack built and tested together: https://opus-op1.pages.dev/opus1/
 
 [Report a bug](https://github.com/LizardMan245/opus/issues/new?template=bug.yml) · [Ideas and questions](https://github.com/LizardMan245/opus/discussions) ·
-[Changelog](https://opus-op1.pages.dev/changelog/)
+[Releases](https://github.com/LizardMan245/opus/releases)
 
 ## Moving in and out
 
@@ -78,7 +78,7 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.halloween` | colour theme |
 
 Outside the pack: `opus.bridge` (alpha), which runs op1r's `.op1p` and Hundekraft's `.knl` synths and effects.
-Versions, keys, CPU and memory for each: https://opus-op1.pages.dev/opus2/
+Versions, keys, CPU and memory for each: https://opus-op1.pages.dev
 
 The names and numbers that 246 mods share inside the firmware are kept in the
 [OP-1 mod registry](https://github.com/LizardMan245/op1-mod-registry).
