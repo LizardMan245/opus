@@ -12,7 +12,7 @@ and built from scratch for Opus. But an idea came from somewhere, and that deser
   it in the effect list.
 - **Iter:** the hidden synth engine people in the custom firmware thread found in 2016. Opus 2 puts it back in the
   engine list.
-- **The OP-1 field:** Teenage Engineering's OP-1 field inspired the dimension engine, the menu's style, the field
+- **The OP-1 field:** Teenage Engineering's OP-1 field inspired the dimension and amp engines, the menu's style, the field
   theme and tape undo. (Opus isn't affiliated with Teenage Engineering.)
 - **Getting in at all:** TabascoEye, who opened up the OP-1's update format in 2016, and op1repacker by wavi and
   op1hacks.
