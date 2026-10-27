@@ -34,6 +34,7 @@ and built from scratch for Opus. But an idea came from somewhere, and that deser
   kennel files (`.knl`) by Hundekraft. The bridge is Opus's own code, written from their published formats. Every
   bridged plugin stays its author's work.
 - **The flash fix:** op1r's release notes also pointed at recording wearing out good flash.
+- **The FN key:** help as a modifier for plugins' controls. Thanks to katerlouis, who suggested it too.
 
 ## Thanks
 
