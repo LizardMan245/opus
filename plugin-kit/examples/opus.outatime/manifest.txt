@@ -1,0 +1,19 @@
+# opus.outatime: a time-travel synth engine, the starter pack's (the owner, 2026-10-25, plan §6 point 20; the
+# sound lab's design, the owner's choice, shaped on the device): three oscillators a voice, the flux capacitor's arms;
+# the year morphing them 1955 to 2015, speed their time drift, power a strong overdrive, trail the ignition. T1 is the
+# owner's time-machine page (v3, its instruments by meaning: ota_page.c). 1.1 (2026-10-27, the owner): the overdrive's
+# level kept by a live match whatever the power, four shapes to choose from, 4 dB louder overall with a soft limiter
+# above 0.7 of full scale; its gain back at 40 times in 1.1.2 (1.1.0 and 1.1.1 had 120).
+opmod     1
+id        opus.outatime
+name      Outatime
+author    opus
+version   1.1.2
+core      2.4
+adds      engine outatime
+uses      blue_turn shift synth t1 "spread: the arms detune"
+uses      green_turn shift synth t1 "tone"
+uses      white_turn shift synth t1 "flux: the ensemble"
+uses      orange_turn shift synth t1 "nothing under shift"
+setting   drive off,on off "always driving"
+setting   shape warm,hard,tube,fold warm "overdrive type"

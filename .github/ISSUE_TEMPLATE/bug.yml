@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Opus version and build
-      description: Hold help on Opus's menu (synth + drum + tape + mixer) to see it, e.g. "opus 1, build 89".
+      description: Open Opus's menu (hold synth + drum + tape + mixer) and hold help, e.g. "opus 2, build 1" or "opus 1, build 90".
     validations:
       required: true
   - type: dropdown
@@ -15,10 +15,19 @@ body:
       label: What was on the OP-1 before Opus
       options:
         - stock 246
-        - an older Opus
+        - Opus 1
+        - an older Opus 2
         - op1r
+        - Hundekraft
         - another mod
         - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: plugins
+    attributes:
+      label: Your plugins
+      description: Which .opmod files are in the mods folder (Opus's menu, T2, lists them), and whether the bridge is in. If the mods list says a plugin was skipped or switched off, say which.
     validations:
       required: true
   - type: textarea

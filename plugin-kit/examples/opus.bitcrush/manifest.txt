@@ -1,0 +1,13 @@
+# opus.bitcrush: Opus 1's bitcrush (mods/opus/fx.c, build 90) as the first effect plugin: a type in the OS's
+# effect list for the synth, the drum and the master, with its own page. The owner's controls (2026-10-05): blue
+# rate (44.1 kHz down to 1.2 kHz in 32 steps of a sixth of an octave), green bits (1-16), white tone (a soft
+# low-pass after the crush, open to warm), orange mix (dry to wet).
+opmod     1
+id        opus.bitcrush
+name      Bitcrush
+author    opus
+version   2.0.0
+core      2.0
+adds      effect bitcrush
+checked   emulator 2026-10-16 test_bitcrush (the Opus 2 suite)
+checked   device 2026-10-16 the owner's OP-1, the core dev 11
