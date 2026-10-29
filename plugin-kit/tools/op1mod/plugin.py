@@ -1004,7 +1004,7 @@ A new Opus 2 plugin, written by `op1mod plugin new @ID@`. Commands from the repo
 - **Would it load beside other plugins?** `python tools/op1mod/op1mod.py plugin --check work/@FILE@/@FILE@.opmod OTHER.opmod ...`
 - **Test it in the emulator:** `python tools/op1mod/op1mod.py test mods/opus2 --out work/@FILE@ --test @ABS@`
   (test.txt: it loads, its panel draws, green turns its level; add its own checks there).
-- **On the OP-1:** connect it in disk mode (the COM menu), copy the .opmod into the disk's MODS folder,
+- **On the OP-1:** connect it in disk mode (shift + COM, then T3), copy the .opmod into the disk's MODS folder,
   eject, and switch the OP-1 off and on. Open the mods list (hold synth, drum, tape and mixer, then t2): its row
   shows "loaded" or why not; blue push its settings, green push its controls, orange push its details.
 - **When it works,** record where: `checked emulator DATE test.txt` and `checked device DATE what you ran`
@@ -1020,7 +1020,7 @@ A new Opus 2 plugin, written by `python plugin_tool.py new @ID@`. Commands from 
 
 - **Build:** `python plugin_tool.py build @REL@` (writes build/@FILE@.opmod)
 - **Read it back as the core would:** `python plugin_tool.py show build/@FILE@.opmod`
-- **On the OP-1:** connect it in disk mode (COM, then T1), copy the .opmod into the disk's mods folder, eject, and
+- **On the OP-1:** connect it in disk mode (shift + COM, then T3), copy the .opmod into the disk's mods folder, eject, and
   switch the OP-1 off and on. Open the mods list (hold synth, drum, tape and mixer, then T2): its row shows "loaded"
   or why not; blue push its settings, green push its controls, orange push its details.
 - **When it works,** record where: `checked device DATE what you ran` in manifest.txt (`show` prints it).
