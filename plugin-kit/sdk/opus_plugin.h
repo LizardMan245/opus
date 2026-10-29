@@ -108,8 +108,14 @@ void opus_on_post_master(struct opl_self *self, void (*fn)(short *l, short *r));
 void opus_on_block_end(struct opl_self *self, void (*fn)(void));
 
 /* Memory from the core's pool: 32-byte aligned, zeroed, the plugin's for this start (never freed); 0 when
- * the pool has no room left (the plugin goes on without it, or refuses). */
+ * the pool has no room left (the plugin goes on without it, or refuses). Core 2.8: from the audio pool while it has
+ * room beyond what it keeps for effects (below), else the main pool. */
 void *opus_alloc(struct opl_self *self, unsigned bytes);
+/* Memory the audio reads every block (a delay line, a voice's tables; core 2.8): as opus_alloc, but it may take the
+ * audio pool's last 512 KB too, which plain asks leave to effects' instances (the pool: 1.3 MB the display's DMA does
+ * not share; in the main pool such memory costs about twice as much while the display sends one of its two frames,
+ * atlas F0281). Effects' instances get it without asking. */
+void *opus_alloc_audio(struct opl_self *self, unsigned bytes);
 /* Fast memory (L1 data: no cache cost, F0151): 32-byte aligned, not cleared, never freed; 0 when none is left
  * (about 25 KB for all plugins, first come; keep the SDRAM buffer then). Only from opl_init: an effect's init
  * also runs in the audio interrupt. Worth it for what an audio block touches every time (a short delay line, a
@@ -293,6 +299,7 @@ struct opus_hosted_effect {
  * start (-4). From opl_init. */
 int opus_effect_host(struct opl_self *self, const struct opus_hosted_effect *f);
 
+
 /* Managers (core 2.2, 2026-10-25; the module model, docs/design/opus-module-model.md §5-7): any plugin may run
  * instances of any effect type (the OS's eight and every plugin's) wherever it wants, without the type knowing (Fx
  * overdrive: a second effect behind every slot). A type is a number (0-7 the OS's, 8-15 plugins'), by name in sounds.
@@ -454,8 +461,9 @@ int opus_engine_add(struct opl_self *self, const struct opus_engine *e);
 /* The current sound's knobs as its newest note's voice last heard them (the LFOs in) and 1 while a voice plays,
  * else the stored knobs and 0: for a page. */
 int opus_engine_live(short par[8]);
-/* The current sound's knobs as stored (what the user set, no LFO), and 1 when it is an engine's: a page shows a set
- * value from these, steady, and what the sound does from opus_engine_live (core 2.3). Any thread. */
+/* The current sound's knobs for a page, and 1 when it is an engine's: since core 2.8 as opus_engine_live (the LFO in
+ * while a note sounds), so every value a page shows follows the modulation as the stock screens' do; core 2.3-2.7 gave
+ * the stored knobs. Any thread. */
 int opus_engine_knobs(short par[8]);
 /* 1 when synth slot s's (0-7) sound is an engine's with its own T2 page (the amp's tuner): a turn never reaches its
  * envelope there (opus.dice leaves it alone). */
@@ -559,5 +567,47 @@ void opus_sincos(int turn4096, int *s, int *c);    /* x 4096, a in 1/4096 of a t
 unsigned short *opus_page_pixels(int *rows);
 int opus_page_keep(unsigned short *out, unsigned cap, int x0, int x1, int y0, int y1);
 void opus_page_put(const unsigned short *runs, int used);
+/* A page's still part, kept by the core (core 2.8): draw what stays the same between frames first, named by a key
+ * that changes whenever it would (a hash of the values it shows, the mode, the page), then what moves:
+ *     if (!opus_page_still(self, key)) { ...the still part...; opus_page_still_done(self); }
+ *     ...what moves...
+ * opus_page_still puts the part back (1) when the frame before had the same key and the core kept it; the same key
+ * two frames in a row keeps it. The core's memory, not the plugin's; the panel and the colours are in the key
+ * already. Inside a page's draw only. */
+int opus_page_still(struct opl_self *self, unsigned key);
+void opus_page_still_done(struct opl_self *self);
+
+/* Sequencers (core 2.8; atlas F0282-F0288): a plugin's sequencer as a row of the OS's sequencer list (shift + the
+ * sequencer key), hosted in finger's type as op1r and kennel host theirs: chosen for the synth or the drum, finger's
+ * player and page give way to the plugin's for that instrument (finger itself while none is chosen), and op1.db's
+ * sequencer table names it, so it comes back at the next start. The player is an object in the OS's player layout
+ * (its vtable at +0, entries of 8 bytes: a 16-bit this-adjust, then the function, F0283): +0x14 key_down(this, key
+ * index 0-23, shift) (non-zero: taken; 0: the key plays as a note), +0x1C key_up(this, index), +0x24 the instrument
+ * changed, +0x2C tick(this, pos) (96 a beat, pos 0-47, the current instrument's only, F0284), +0x34 a frame, +0x3C
+ * stop; the OS calls them in its threads. On its page (the sequencer key) key(mode, code, pressed) and turn(mode,
+ * encoder, delta) come first (1: taken; else finger's handling; the octave keys 0x24, 0x25 never: they move the
+ * keyboard's octave as on the stock sequencers' pages), and its own OS screen (svg, screen_init, screen_draw: as an
+ * engine's) shows in finger's place. midi_start: MIDI START came (F0288). mode 0 the synth, 1 the drum. alias: an older name that also chooses it (a saved sound's, op1.db's;
+ * written back as name). Returns its index, or -1. A sequencer saves its own data (op1.db through opus_db or a
+ * file). */
+struct opus_os_vfn {                       /* an OS vtable's entry */
+    short adjust, pad;
+    void *fn;
+};
+struct opus_sequencer {
+    unsigned size;                         /* sizeof (struct opus_sequencer) */
+    const char *name;                      /* its row and its name in op1.db's sequencer table: 1-15 letters */
+    void *(*player)(int mode);             /* its player for mode, in the OS's layout */
+    int (*key)(int mode, int code, int pressed);
+    int (*turn)(int mode, int encoder, int delta);
+    void (*midi_start)(int mode);
+    void (*chosen)(int mode, int on);      /* chosen for mode, or left for another */
+    const char *svg;
+    void (*screen_init)(void *scr);
+    void (*screen_draw)(void *scr, int dt);
+    const char *alias;                     /* or 0 */
+};
+int opus_seq_register(struct opl_self *self, const struct opus_sequencer *s);
+int opus_seq_mode(void);                   /* the instrument the OS's sequencer calls are for now: 0 synth, 1 drum */
 
 #endif

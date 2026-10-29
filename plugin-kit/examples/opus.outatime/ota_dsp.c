@@ -75,7 +75,7 @@ static int knob_h(const unsigned short *t, int v)
     return (int)t[i] + ((((int)t[i + 1] - (int)t[i]) * f) >> 7);
 }
 
-static int tanh_q15(int x)
+static inline __attribute__((always_inline)) int tanh_q15(int x)
 {
     const int neg = x < 0;
     const unsigned a = (unsigned)(neg ? -x : x);
@@ -161,30 +161,42 @@ void ota_render(struct ota_voice *v, short *out, const short *par, unsigned pitc
      * 9 of them the stack's); a pass each holds a few. sum is in fast memory (L1) when the engine gave some: out, the
      * engine service's buffer, is written once a sample. */
     short *const sum = scratch;
-    for (int k = 0; k < 3; ++k) {
+    for (int k = 0; k < 3; ++k) {          /* the first arm sets sum, the others add (1.1.3: a loop each, not a test a
+                                              sample; the next era's wave read from the same pointer: era's b is a's
+                                              next wave) */
         unsigned p = v->ph[k];
         const unsigned s = st[k];
-        const short *const a = wa[k], *const b = wb[k];
+        const short *const a = wa[k];
         const int w = ww[k];
-        for (int i = 0; i < 128; ++i) {
-            p += s;
-            const unsigned j = p >> 24;
-            const int x = (a[j] + (((short)(b[j] - a[j]) * (short)w) >> 15)) >> 1;   /* half-scale waves:
-                                                                                 16 x 16, one cycle */
-            sum[i] = (short)(k ? sum[i] + x : x);
-        }
+        if (!k)
+            for (int i = 0; i < 128; ++i) {
+                p += s;
+                const short *const q = a + (p >> 24);
+                sum[i] = (short)((q[0] + (((short)(q[OTA_WLEN] - q[0]) * (short)w) >> 15)) >> 1);   /* half-scale
+                                                                                  waves: 16 x 16, one cycle */
+            }
+        else
+            for (int i = 0; i < 128; ++i) {
+                p += s;
+                const short *const q = a + (p >> 24);
+                sum[i] = (short)(sum[i] + ((q[0] + (((short)(q[OTA_WLEN] - q[0]) * (short)w) >> 15)) >> 1));
+            }
         v->ph[k] = p;
     }
     int low = v->low, band = v->band;
     for (int i = 0; i < 128; ++i) {
         const int x = sum[i];              /* a quarter of the sum */
         low += (f * band) >> 14;
-        low = low > BAND_MAX ? BAND_MAX : low < -BAND_MAX ? -BAND_MAX : low;
+        low = low > BAND_MAX ? BAND_MAX : low;
+        low = low < -BAND_MAX ? -BAND_MAX : low;
         const int high = x - low - ((damp * band) >> 14);
         band += (f * (high >> 2)) >> 12;   /* high up to about 5.6: a quarter of it keeps the product in 32 bits */
-        band = band > BAND_MAX ? BAND_MAX : band < -BAND_MAX ? -BAND_MAX : band;
-        const int y = (low * out_gain) >> 12;
-        out[i] = (short)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
+        band = band > BAND_MAX ? BAND_MAX : band;
+        band = band < -BAND_MAX ? -BAND_MAX : band;
+        int y = (low * out_gain) >> 12;
+        y = y > 32767 ? 32767 : y;
+        y = y < -32768 ? -32768 : y;
+        out[i] = (short)y;
     }
     v->low = low;
     v->band = band;
@@ -199,7 +211,7 @@ void ota_fx_init(struct ota_fx *f)
 }
 
 /* The drive's shape of v (Q15, up to 40 times full scale) -> Q15 within full scale. */
-static int shape(int v, int s)
+static inline __attribute__((always_inline)) int shape(int v, int s)
 {
     switch (s) {
     case OTA_HARD:
@@ -232,14 +244,41 @@ static const short SQUARE[OTA_SHAPES] = { 860, 860, 860, 210 };
 #define KNEE            22938              /* the soft limiter above 0.7 of full scale: tanh to full scale */
 #define KNEE_SCALE      3414               /* Q10: 32768 / (32767 - KNEE), the tanh's argument a step over the knee */
 
-static int limit(int z)                    /* below the knee as it is; above, eased into full scale (never clipped) */
+static inline __attribute__((always_inline))
+int limit(int z)                          /* below the knee as it is; above, eased into full scale (never clipped) */
 {
     const int a = z < 0 ? -z : z;
-    if (a <= KNEE)
+    if (__builtin_expect(a <= KNEE, 1))
         return z;
     const int d = a - KNEE > 0x60000 ? 0x60000 : a - KNEE;   /* tanh's table ends at 8 anyway */
     const int y = KNEE + (((32767 - KNEE) * tanh_q15((d * KNEE_SCALE) >> 10)) >> 15);
     return z < 0 ? -y : y;
+}
+
+/* The drive over a block in shape s (a constant in each copy), the gain ramped from g0 to g1. */
+static inline __attribute__((always_inline))
+void drive_loop(struct ota_fx *f, short *buf, int drive, int g0, int g1, int s)
+{
+    int in = f->in, out = f->out, hp_x = f->hp_x, hp_y = f->hp_y, lp = f->lp;
+    for (int i = 0; i < 64; ++i) {
+        const int x = buf[i];
+        in += (((x < 0 ? -x : x) << 8) - in) >> FOLLOW;
+        const int y = shape((x * drive) >> 8, s);
+        const int h = y - hp_x + hp_y - ((DC_LEAK * hp_y) >> 15);
+        hp_x = y;
+        hp_y = h;
+        lp += (FIZZ * (h - lp)) >> 15;     /* the drive's output as heard (the fizz's lowpass in), then matched */
+        out += (((lp < 0 ? -lp : lp) << 8) - out) >> FOLLOW;
+        int z = limit((((lp * (g0 + (((g1 - g0) * i) >> 6))) >> 12) * OUT_GAIN) >> 12);
+        z = z > 32767 ? 32767 : z;
+        z = z < -32768 ? -32768 : z;
+        buf[i] = (short)z;
+    }
+    f->in = in;
+    f->out = out;
+    f->hp_x = hp_x;
+    f->hp_y = hp_y;
+    f->lp = lp;
 }
 
 void ota_block(struct ota_fx *f, short *buf, const short *par)
@@ -259,17 +298,11 @@ void ota_block(struct ota_fx *f, short *buf, const short *par)
         g0 = target;
     }
     const int g1 = g0 + (target < g0 ? (target - g0) >> 1 : (target - g0) >> 2);   /* down in 2 blocks, up in 4 */
-    for (int i = 0; i < 64; ++i) {
-        const int x = buf[i];
-        f->in += (((x < 0 ? -x : x) << 8) - f->in) >> FOLLOW;
-        const int y = shape((x * drive) >> 8, s);
-        const int h = y - f->hp_x + f->hp_y - ((DC_LEAK * f->hp_y) >> 15);
-        f->hp_x = y;
-        f->hp_y = h;
-        f->lp += (FIZZ * (h - f->lp)) >> 15;  /* the drive's output as heard (the fizz's lowpass in), then matched */
-        f->out += (((f->lp < 0 ? -f->lp : f->lp) << 8) - f->out) >> FOLLOW;
-        const int z = limit((((f->lp * (g0 + (((g1 - g0) * i) >> 6))) >> 12) * OUT_GAIN) >> 12);
-        buf[i] = (short)(z > 32767 ? 32767 : z < -32768 ? -32768 : z);
+    switch (s) {                           /* one loop per shape (1.1.3: the shape's choice made once, not a sample) */
+    case OTA_HARD: drive_loop(f, buf, drive, g0, g1, OTA_HARD); break;
+    case OTA_TUBE: drive_loop(f, buf, drive, g0, g1, OTA_TUBE); break;
+    case OTA_FOLD: drive_loop(f, buf, drive, g0, g1, OTA_FOLD); break;
+    default: drive_loop(f, buf, drive, g0, g1, OTA_WARM); break;
     }
     f->gain = g1;
 }

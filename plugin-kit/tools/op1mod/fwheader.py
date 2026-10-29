@@ -86,11 +86,11 @@ def _comment(r, facts):
     return '/* ' + '\n * '.join(lines) + ' */'
 
 
-def generate(functions=FUNCTIONS, facts=FACTS, space_map=SPACE_MAP, plugin=False):
+def generate(functions=FUNCTIONS, facts=FACTS, space_map=SPACE_MAP, plugin=False, leave_facts=()):
     """-> the header's text; HeaderError lists every refused row. plugin: Opus 2's plugin header, each
     function declared by name with no address (the core supplies it at load: imports by name,
-    docs/design/opus2-contract.md §4)."""
-    rows = _rows(functions)
+    docs/design/opus2-contract.md §4). leave_facts: rows citing any of these facts are left out."""
+    rows = [r for r in _rows(functions) if not set(r['facts'].split()) & set(leave_facts)]
     conf = {r['id']: r['confidence'] for r in _rows(facts)}
     code = [(int(r['lo'], 16), int(r['hi'], 16)) for r in _rows(space_map) if r['kind'] == 'code']
     problems = check(rows, conf, code)

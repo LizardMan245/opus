@@ -8,7 +8,7 @@ A hobby project, built in free time and at its own pace. Help is always welcome,
 `.opmod` files you copy into a mods folder on the OP-1's disk. Add one, remove one, swap them, no reflashing. The
 starter pack has all of Opus 1's features as plugins, plus dx (a DX7 voice player for your own `.syx` banks),
 outatime (a time-travel synth engine), iter (the OP-1's own hidden engine) and a Halloween colour theme. The bridge,
-an alpha, runs op1r's and Hundekraft's synths and effects on Opus.
+an alpha, runs op1r's and Hundekraft's synths, effects and sequencers on Opus.
 
 - **The core:** make the update from your own stock firmware with the patcher at
   **https://opus-op1.pages.dev/patcher/**. It runs in your browser and nothing is uploaded.
@@ -26,7 +26,7 @@ an alpha, runs op1r's and Hundekraft's synths and effects on Opus.
 Opus is built so you can try it without risk and leave without losing anything.
 
 - **Coming from stock, Opus 1, op1r or Hundekraft:** your sounds, presets and tape stay. Opus 1's sounds play with
-  the starter pack in the mods folder. op1r's and Hundekraft's synths and effects play with the bridge.
+  the starter pack in the mods folder. op1r's and Hundekraft's synths, effects and sequencers play with the bridge.
 - **A plugin removed:** a sound that needs it is kept exactly as it is, shows "needs" with the plugin's name, and
   plays again when the plugin comes back.
 - **Leaving:** the cleaner (Opus's menu, system) makes your data ready for stock or another mod, and keeps a copy of
@@ -77,7 +77,7 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.splash` | your own start-up picture |
 | `opus.halloween` | colour theme |
 
-Outside the pack: `opus.bridge` (alpha), which runs op1r's `.op1p` and Hundekraft's `.knl` synths and effects.
+Outside the pack: `opus.bridge` (alpha), which runs op1r's `.op1p` and Hundekraft's `.knl` synths, effects and sequencers.
 Versions, keys, CPU and memory for each: https://opus-op1.pages.dev
 
 The names and numbers that 246 mods share inside the firmware are kept in the

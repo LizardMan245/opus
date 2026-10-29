@@ -1052,4 +1052,18 @@ extern fw_voice_envelope_t fw_voice_envelope;
 typedef void fw_restart_t(void);
 extern fw_restart_t fw_restart;
 
+/* fw_string_assign: std::string::assign (Dinkumware), 0x019FF0BC.  F0187 (high).  dst := src's
+ * characters from pos, at most n (n -1: to the end); both are the OS's 28-byte std::string (+4
+ * the text inline while the capacity +0x18 is 15, else a heap pointer there; +0x14 the size).
+ * An out-of-range pos is the library's error. The synth loader sets each entry's folder
+ * (+0x14) with it (0x01A0578C). */
+typedef void *fw_string_assign_t(void *dst, const void *src, unsigned pos, unsigned n);
+extern fw_string_assign_t fw_string_assign;
+
+/* fw_os_free: operator delete (the OS heap, TLSF), 0x01A5E310.  F0187 (high).  Frees a block
+ * of the OS's own heap under its lock: a std::string's text when its capacity is above 15 (the
+ * OS's own pattern after an asString into a local), a jsoncpp node. Thread context. */
+typedef void fw_os_free_t(void *p);
+extern fw_os_free_t fw_os_free;
+
 #endif

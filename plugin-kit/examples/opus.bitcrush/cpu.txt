@@ -1,4 +1,4 @@
 # The plugin's CPU figure: its worst audio block in cycles, measured in the emulator (op1mod plugin
 # --cpu-from); the build writes it as the manifest's cpu line, the budget the core holds it to (contract §8).
-cycles 18274
-measured 2026-10-17 test_bitcrush.out (memory timing)
+cycles 8709
+measured 2026-10-28 test_bitcrush.out (memory timing)

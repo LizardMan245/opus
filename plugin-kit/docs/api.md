@@ -112,6 +112,7 @@ Most of the API is in core 2.0. These came later; set `core` to the highest vers
 | 2.5 | `opus_engine_show` |
 | 2.6 | another firmware's engines and effects (below the table) |
 | 2.7 | `opus_on_settings_rows` |
+| 2.8 | `opus_alloc_audio`, `opus_page_still`, sequencers: `opus_seq_register` and the rest of the Sequencers section |
 
 Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`, `svg`, `screen_init` and
 `screen_draw`; `struct opus_hosted_effect` and `opus_effect_host`.
@@ -137,7 +138,7 @@ Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`,
 - [Files](#files): rename, the background file job, the flash's headroom, reading files
 - [Journals](#journals): changes in several steps that survive a power cut
 - [Presets](#presets): the synth presets as the browser lists them
-- [Memory](#memory): the pool, fast memory
+- [Memory](#memory): the pool, the audio pool, fast memory
 - [CPU and the log](#cpu-and-the-log)
 - [Settings](#settings): the manifest's settings, a plugin's own rows on the settings page
 - [Switched places](#switched-places)
@@ -149,6 +150,7 @@ Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`,
 - [Another firmware's effects](#another-firmwares-effects)
 - [Managers](#managers): running instances of any effect type
 - [Engines](#engines): synth engines in the OS's engine list
+- [Sequencers](#sequencers): sequencers in the OS's sequencer list
 - [Pages](#pages): drawing a plugin's own page
 - [Paths](#paths): lines and curves drawn by the OS's renderer
 - [Art](#art): SVG art on a page
@@ -542,6 +544,15 @@ void *opus_alloc(struct opl_self *self, unsigned bytes);
 Memory from the core's pool: 32-byte aligned, cleared to zero, the plugin's for this start. It is never freed: take
 what you need once (in `opl_init`) and keep it. Returns 0 when the pool has no room left: go on without it, or refuse
 from `opl_init`. The bytes count in the plugin's memory on the mods list. Any thread, but not the audio block.
+
+```c
+void *opus_alloc_audio(struct opl_self *self, unsigned bytes);
+```
+
+Memory the audio reads every block (a delay line, a voice's tables; core 2.8): as `opus_alloc`, from the audio pool,
+1.3 MB of RAM the display does not share. Ordinary pool memory costs about twice as much to read while the display
+sends one of its two frames; the audio pool does not. Plain `opus_alloc` takes from the audio pool too while it has
+room, but leaves its last 512 KB to `opus_alloc_audio` and to effects' instances (which get it without asking).
 
 ```c
 void *opus_fast(struct opl_self *self, unsigned bytes);
@@ -1283,8 +1294,9 @@ the stored knobs and 0. For a page.
 int opus_engine_knobs(short par[8]);
 ```
 
-The current sound's knobs as stored (what the user set, no LFO), and 1 when the current sound is an engine's. A page
-shows a set value steady from these, and what the sound does from `opus_engine_live`. Any thread. Needs core 2.3.
+The current sound's knobs for a page, and 1 when the current sound is an engine's. Since core 2.8 these are
+`opus_engine_live`'s (the LFO in while a note sounds), so every value a page shows follows the modulation, as the
+stock screens do; core 2.3-2.7 gave the stored knobs (what the user set). Any thread. Needs core 2.3.
 
 ```c
 int opus_engine_own_t2(int s);
@@ -1316,6 +1328,62 @@ sound, so it travels with it: the OS's save makes a user preset holding it, and 
   sound is no engine's or `n` is out of range. Key thread (a turn or key handler).
 - `opus_engine_sound_name(buf, max)`: the sound's name as the OS keeps it (the engine's name when chosen, a user
   preset's after the OS's save or a load), up to 23 characters, 0-terminated in `buf`. Returns its length. Any thread.
+
+## Sequencers
+
+The core's sequencer service (core 2.8) adds a sequencer to the OS's sequencer list (shift + the sequencer key).
+Chosen for the synth or the drum, it takes finger's place for that instrument: the OS asks it for its player, the
+sequencer key shows its page, and op1.db remembers the choice, so it comes back at the next start. With none chosen,
+finger is finger. Opus's bridge runs op1r's and Hundekraft's sequencers this way.
+
+```c
+struct opus_os_vfn {
+    short adjust, pad;
+    void *fn;
+};
+struct opus_sequencer {
+    unsigned size;
+    const char *name;
+    void *(*player)(int mode);
+    int (*key)(int mode, int code, int pressed);
+    int (*turn)(int mode, int encoder, int delta);
+    void (*midi_start)(int mode);
+    void (*chosen)(int mode, int on);
+    const char *svg;
+    void (*screen_init)(void *scr);
+    void (*screen_draw)(void *scr, int dt);
+    const char *alias;
+};
+int opus_seq_register(struct opl_self *self, const struct opus_sequencer *s);
+int opus_seq_mode(void);
+```
+
+`opus_seq_register` from `opl_init`; it returns the sequencer's index, or -1 (a bad struct, a name taken, or 16
+sequencers already). `mode` is 0 for the synth, 1 for the drum; `opus_seq_mode()` says which instrument the OS's
+sequencer calls are for at the moment (the player reads it too).
+
+- `name`: its row in the list and its name in op1.db: 1-15 characters, lowercase letters, digits, space or `-`. Not a
+  stock sequencer's (pattern, endless, tombola, finger, sketch, arpeggio) nor another plugin's. Never rename it once
+  people use it: their saved choice names it. `alias`: an older name that also chooses it, or 0; the next save writes
+  `name`.
+- `player(mode)`: the player object for the instrument, in the OS's own player layout. Its first word points at a
+  table of `struct opus_os_vfn` entries; the OS calls an entry as `fn(this + adjust, ...)`. The entries the OS uses, by
+  offset in the table: +0x14 `key_down(this, key, shift)` for the keys 0-23 (non-zero: taken; 0: the key plays its
+  note), +0x1C `key_up(this, key)`, +0x24 the instrument changed, +0x2C `tick(this, pos)` 96 times a beat while the
+  sequencer runs (the current instrument's player only), +0x34 once a frame, +0x3C stop. They run in the OS's threads
+  (the tick in the sequencer thread): short work, no files, no drawing.
+- `key(mode, code, pressed)` and `turn(mode, encoder, delta)`: on its page, every key and encoder comes here first;
+  return 1 to take it, 0 to leave it to finger's handling. The octave keys (left and right arrows) never come here:
+  they move the keyboard's octave, as on the stock sequencers' pages. `encoder` 0-3 is blue to orange (4-7 with shift held); `delta` is the
+  OS's count for the turn, positive to the right.
+- `midi_start(mode)`: MIDI START came in over USB (restart at the first step). `chosen(mode, on)`: it was chosen for
+  the instrument, or another was.
+- `svg`, `screen_init`, `screen_draw`: its own page, as an engine's (see [Engines](#engines)); without them finger's
+  page shows.
+
+A sequencer plays notes the way the OS's own sequencers do: `fw_make_midinote` for a key's event, then
+`fw_vc_note_on(ev, 0)` and later `fw_vc_note_off(ev)` (`op1fw.h`), from its tick. It saves its own data (a file in
+its folder, or its own op1.db table): the core keeps only which sequencer is chosen.
 
 ## Pages
 
@@ -1370,7 +1438,7 @@ int opus_page_art(struct opl_self *self, int page, const char *path);
 ```
 
 SVG art behind an engine's page: `page` 0 T1, 1 T2, 3 T4; `path` the file's full path (up to 71 characters, at most
-64 KB), or 0 for no art any more. The first time the page shows, the file is checked for what would stop the OP-1 in
+128 KB; 64 KB before core 2.8), or 0 for no art any more. The first time the page shows, the file is checked for what would stop the OP-1 in
 the OS's SVG parser, then loaded, drawn once and kept; every frame after, the kept picture is put back cheaply and
 the page's draw call draws over it. The file loads again after it changed (its size). Returns 1, or 0 for a bad page
 or no room (16 art files in all, with `opus_art_open`'s). Any time from `opl_init` on (for example from a folder's
@@ -1379,6 +1447,27 @@ or no room (16 art files in all, with `opus_art_open`'s). Any time from `opl_ini
 The check refuses (and the boot log says why) a missing file, an XML error, a root other than `<svg>`, a number with
 a point but no digits after it, more than four decimals, or an exponent, the path commands Q and T, and an id with
 `_x` not followed by two characters and `_`. A refused file is never parsed; the page draws without it.
+
+```c
+int opus_page_still(struct opl_self *self, unsigned key);
+void opus_page_still_done(struct opl_self *self);
+```
+
+A page's still part, kept by the core (core 2.8): draw what stays the same between frames first, named by a key that
+changes whenever it would (a hash of the values it shows, the mode, the page), then what moves:
+
+```c
+if (!opus_page_still(self, key)) {
+    /* ...the still part... */
+    opus_page_still_done(self);
+}
+/* ...what moves... */
+```
+
+`opus_page_still` puts the part back cheaply and returns 1 when the frame before had the same key and the core kept
+it; the same key two frames in a row keeps it. The kept pixels are the core's memory, not the plugin's; the panel and
+the colours are in the key already. Inside a page's draw only. A page that redraws many lines or text every frame
+costs the display thread much less this way.
 
 ## Paths
 
@@ -1612,6 +1701,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_accent` | [Colours](#colours) |
 | `opus_accent_now` | [Colours](#colours) |
 | `opus_alloc` | [Memory](#memory) |
+| `opus_alloc_audio` | [Memory](#memory) |
 | `opus_art_colour_slots` | [Art](#art) |
 | `opus_art_colours` | [Art](#art) |
 | `opus_art_draw` | [Art](#art) |
@@ -1696,6 +1786,8 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_page_pixels` | [Pixels](#pixels) |
 | `opus_page_put` | [Pixels](#pixels) |
 | `opus_page_stroke` | [Paths](#paths) |
+| `opus_page_still` | [Pages](#pages) |
+| `opus_page_still_done` | [Pages](#pages) |
 | `opus_page_stroke_line` | [Pages](#pages) |
 | `opus_page_text` | [Pages](#pages) |
 | `opus_page_text_right` | [Pages](#pages) |
@@ -1709,6 +1801,8 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_quick_page` | [Quick pages](#quick-pages) |
 | `opus_quick_show` | [Quick pages](#quick-pages) |
 | `opus_rename` | [Files](#files) |
+| `opus_seq_mode` | [Sequencers](#sequencers) |
+| `opus_seq_register` | [Sequencers](#sequencers) |
 | `opus_set_setting` | [Settings](#settings) |
 | `opus_setting` | [Settings](#settings) |
 | `opus_sincos` | [Art](#art) |

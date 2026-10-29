@@ -22,13 +22,12 @@ struct state {
     struct chan ch[2];
 };
 
-/* One channel, n samples in place. Rounding to the step, not truncation (F0117). */
-static void crush(struct chan *c, short *buf, int n, const short *par)
+/* The hold, the tone and the mix, each sample; open (the tone's low-pass open) and full (the mix all wet) fixed for the
+ * block (2.0.1, 2026-10-28: tested every sample, both mispredicted at the defaults, they cost most of a sample; the
+ * same output, a block 3,774 -> 1,639 cycles, work/bitcrush-opt). */
+static inline __attribute__((always_inline))
+void crush_n(struct chan *c, short *buf, int n, u32 inc, int step, int half, int a, int mix, int open, int full)
 {
-    const int p0 = clamp15(par[0]), p1 = clamp15(par[1]), p2 = clamp15(par[2]), mix = clamp15(par[3]);
-    const u32 inc = RATE_INC[p0 >> 10];
-    const int bits = 1 + (p1 >> 11), step = 1 << (16 - bits), half = step >> 1;
-    const int a = 32767 - ((p2 * 31129) >> 15);   /* tone: the low-pass's coefficient, open at 32767 */
     u32 ph = c->ph;
     int held = c->held, lp = c->lp;
     for (int i = 0; i < n; ++i) {
@@ -39,13 +38,33 @@ static void crush(struct chan *c, short *buf, int n, const short *par)
             const int q = (dry + half) & ~(step - 1);
             held = q > 32767 ? 32767 : q;
         }
-        lp = a >= 32767 ? held : lp + (((held - lp) * a) >> 15);
-        int y = mix >= 32767 ? lp : dry + (((lp - dry) * mix) >> 15);
-        buf[i] = (short)(y > 32767 ? 32767 : y < -32768 ? -32768 : y);
+        lp = open ? held : lp + (((held - lp) * a) >> 15);
+        int y = full ? lp : dry + (((lp - dry) * mix) >> 15);
+        y = y > 32767 ? 32767 : y;
+        y = y < -32768 ? -32768 : y;
+        buf[i] = (short)y;
     }
     c->ph = ph;
     c->held = held;
     c->lp = lp;
+}
+
+/* One channel, n samples in place. Rounding to the step, not truncation (F0117). */
+static void crush(struct chan *c, short *buf, int n, const short *par)
+{
+    const int p0 = clamp15(par[0]), p1 = clamp15(par[1]), p2 = clamp15(par[2]), mix = clamp15(par[3]);
+    const u32 inc = RATE_INC[p0 >> 10];
+    const int bits = 1 + (p1 >> 11), step = 1 << (16 - bits), half = step >> 1;
+    const int a = 32767 - ((p2 * 31129) >> 15);   /* tone: the low-pass's coefficient, open at 32767 */
+    if (a >= 32767) {
+        if (mix >= 32767)
+            crush_n(c, buf, n, inc, step, half, a, mix, 1, 1);
+        else
+            crush_n(c, buf, n, inc, step, half, a, mix, 1, 0);
+    } else if (mix >= 32767)
+        crush_n(c, buf, n, inc, step, half, a, mix, 0, 1);
+    else
+        crush_n(c, buf, n, inc, step, half, a, mix, 0, 0);
 }
 
 /* One instance's needs: its state alone. */

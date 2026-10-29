@@ -1,9 +1,10 @@
 /* outatime's T1: the owner's time-machine page (the design reference F:\OP1firmware\artwork\outatime\v3, its drawing code
  * ported), its instruments taken over by meaning (the owner, 2026-10-26, plan §6 point 20):
  *
- * What the user set (DEST, the meter's arc and digits, the readout, the tabs' numbers) shows the stored knobs, steady
- * (opus_engine_knobs, core 2.3); what the sound does (PRES, the needle and the car, the rods, the fire) the live ones,
- * the LFO in (opus_engine_live), as the OS's own engine screens move with it.
+ * What the user set (DEST, the meter's arc and digits, the readout, the tabs' numbers) shows opus_engine_knobs (the
+ * stored knobs in core 2.3-2.7; since core 2.8 the LFO in while a note sounds: the owner, 2026-10-28, every value
+ * follows the modulation); what the sound does (PRES, the needle and the car, the rods, the fire) the live ones
+ * (opus_engine_live), as the OS's own engine screens move with it.
  *
  *   year  (blue)    the time circuits, each row the OP-1's own month, day and time (opus_clock, core 2.4; the owner
  *                   on the device, 2026-10-26: "only the year changes with the parameter"): DEST the destination, PRES
