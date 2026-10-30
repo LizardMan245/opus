@@ -45,7 +45,9 @@ run the OP-1, they can. So:
    disk mode (shift + COM, then T3), copy the `.opmod` into the disk's mods folder, eject, restart, the mods list
    (the menu, T2): its row says "loaded" or why not. Then what to press and what to listen for.
 5. **Ask what they saw and heard**, and fix from that. If the OP-1 crashed: the next start leaves the plugin out
-   ("skipped: crashed") unless developer mode is on; holding Stop while switching on starts with no plugins.
+   ("skipped: crashed") unless developer mode is on; holding Stop while switching on starts with no plugins. Ask
+   for the crash log (disk mode, the `crash` folder, `N.txt`) and read it with `python tools/crashlog.py N.txt
+   --plugin ID=build/NAME.build/plugin_0.elf`: the plugin's addresses show as its function and offset.
 6. **Its CPU figure** (any plugin with audio code): have them play the heaviest case (all voices, chords, its
    heaviest settings) with developer mode on, then read "audio: worst N" in its details (orange push on its row in
    the mods list), and write `cycles N` into the plugin folder's `cpu.txt` (see `examples/opus.bitcrush/cpu.txt`).

@@ -48,3 +48,8 @@ body:
     attributes:
       label: A photo of the screen
       description: If the OP-1 stopped at a black screen with white text, a photo of it helps most. Drag it in here.
+  - type: textarea
+    id: crashlog
+    attributes:
+      label: The crash log
+      description: If the OP-1 crashed (Opus 2 beta 3.2 or newer), put it in disk mode, open the crash folder and drag the newest N.txt in here.

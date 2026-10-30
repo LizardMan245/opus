@@ -97,6 +97,13 @@ switching the OP-1 on starts it with no plugins at all; then delete the plugin f
 Nothing a plugin does can touch te-boot, the OP-1's update and recovery mode: you can always install Opus again
 (hold **COM** while switching on).
 
+**Reading a crash:** after a crash, the next start writes a crash log, and disk mode shows it in the **crash** folder
+on the USB disk (`/crash/N.txt`, the last eight; delete one there and it is gone from the OP-1 too). Its first lines
+say what stopped the OP-1 (the OS's assert, or the processor's exception) and which plugins were loaded; the rest is
+the whole record. `python tools/crashlog.py N.txt` reads it: every address in a plugin shows as `id+offset`, and
+`--plugin ID=build/NAME.build/plugin_0.elf` (your build's linked file) names your plugin's functions there. Attach the
+log when you report a crash.
+
 ## 4. Learn from the examples
 
 Build any of them the same way (`python plugin_tool.py build examples/opus.bitcrush`). Each is the exact source of

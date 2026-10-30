@@ -1,12 +1,12 @@
 """Opus 2's plugin image: the relocations from a `ld -q` link and the loader's way of applying them
-(docs/design/opus2-contract.md §3; stage B, 2026-10-15).
+(stage B, 2026-10-15).
 
 A plugin is linked once with `ld -q` (--emit-relocs) at a base inside the pool, its imports given as
 absolute symbols (--defsym NAME=ADDR), into one output section holding code and initialised data
 (`.image`) and one of zeros (`.zero`).  The relocations kept in the ELF say where the image holds an
 address; this module turns them into the contract's table and applies it as the core's loader will.
 The table is checked by a second link at another base (`check_two_bases`): relocating the first image
-to the second base must give the second image byte for byte (AGENTS 6: two methods).
+to the second base must give the second image byte for byte (two methods).
 
 The kinds (bfin binutils 2.38; the r_offset of every kind is the bytes it changes, in the image):
 
@@ -75,7 +75,7 @@ def relocations(elf_path, section='.image'):
     image = data[img['offset']:img['offset'] + size]
     zsec = byname.get('.zero')
     # the zero fill runs from the image's end to the zero section's end: an aligned buffer in it (a file system
-    # buffer at an odd address hung the OS, F0255) leaves the linker's padding before it, which the loader zeroes too
+    # buffer at an odd address hung the OS) leaves the linker's padding before it, which the loader zeroes too
     end = zsec['addr'] + zsec['size'] if zsec and zsec['size'] else base + size
     zero = end - (base + size)
     out = []

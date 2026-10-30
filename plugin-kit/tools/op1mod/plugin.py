@@ -1,17 +1,17 @@
-"""Opus 2's plugin build: a plugin folder -> one .opmod file (docs/design/opus2-contract.md §3, §4, §6).
+"""Opus 2's plugin build: a plugin folder -> one .opmod file.
 
-    python tools/op1mod/op1mod.py plugin DIR --out FILE.opmod
+    python plugin_tool.py build DIR [--out FILE.opmod]     (the kit's command)
 
 DIR holds manifest.txt and the plugin's C and assembly sources (*.c, *.s, *.S at its top level); a DIR with
 no sources builds a code-free .opmod (image size 0, flags without the code bit: its manifest is all it brings,
 a theme's `theme` lines, settings; 2026-10-21).  The
-sources are compiled as the core's are (build.CFLAGS) against the SDK: mods/opus2/sdk/opus_plugin.h (the
+sources are compiled as the core's are (build.CFLAGS) against the SDK: opus_plugin.h (the
 core's names) and op1fw.h in plugin form (the firmware's functions by name, no addresses: fwheader.py).
 Every name the plugin uses and does not define is an import.  A called import gets a stub in the image
 (`P1.L = lo; P1.H = hi; JUMP (P1)`, written here, its two halves relocations to the import), so the
 plugin's calls reach it by a relative branch and the image may land anywhere: the core's far homes lie
-beyond a call's ±16 MB (plan 7.9, from op1r 34's review).  The image is linked twice at two bases
-(opmod.link_two_bases: the relocation table checked byte for byte, AGENTS 6), and the file written:
+beyond a call's ±16 MB.  The image is linked twice at two bases
+(opmod.link_two_bases: the relocation table checked byte for byte), and the file written:
 
   header (0x60 bytes), the manifest (the author's lines and the built ones), the image (code and data,
   as linked at the first base), imports (u32: each name's offset in the strings), relocations (12 bytes:
@@ -20,7 +20,7 @@ beyond a call's ±16 MB (plan 7.9, from op1r 34's review).  The image is linked 
   image, the place's name offset, the 8 expected bytes), the strings; the CRC-32 of the whole file with
   its own field 0.
 
-A place is a manifest line as the .hooks files have it (docs/design/opus2-contract.md §7):
+A place is a manifest line as the .hooks files have it:
 `place call|jump|ldimm|word|patch ADDRESS SYMBOL expect HEX [as NAME] [switched]`; the core checks the expected
 bytes and installs it at load (a call or jump: a 24-bit branch to SYMBOL; ldimm: the pair Rx.L/Rx.H loading
 SYMBOL's address; word: the 32-bit word at ADDRESS; patch, 2026-10-21: as many bytes as expected, 2 to 8, from
@@ -43,7 +43,7 @@ from build import CFLAGS, tool, toolchain
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 SDK = next((d for d in (os.path.join(REPO, 'mods', 'opus2', 'sdk'), os.path.join(REPO, 'sdk')) if os.path.isdir(d)),
-           os.path.join(REPO, 'mods', 'opus2', 'sdk'))   # op1-lab's, or the authors' kit's (tools/kit/make_kit.py)
+           os.path.join(REPO, 'mods', 'opus2', 'sdk'))   # the repository's, or the authors' kit's
 MAGIC = b'OPMD'
 FORMAT = 1
 HEADER = 0x60
@@ -147,7 +147,7 @@ CHECKED_RE = re.compile(r'^(emulator|device) (\d{4}-\d{2}-\d{2})(?: (.+))?$')
 
 
 def check_checked(line):
-    """`checked emulator|device YYYY-MM-DD [what: a test, a build, a note]` (plan 7.10, from op1-sdk's catalog): where
+    """`checked emulator|device YYYY-MM-DD [what: a test, a build, a note]` (from op1-sdk's catalog): where
     and when the author saw the plugin work, shown by --show and --check; the core passes it over."""
     import datetime
     m = CHECKED_RE.match(line)
@@ -191,7 +191,7 @@ def check_setting(setting):
         if not -32768 <= lo <= default <= hi <= 32767:
             raise PluginError(f'manifest: setting {setting!r}: LOW <= DEFAULT <= HIGH, within a short')
     else:
-        choices = w[1].split(',')         # the OP-1's font draws # and / (F0143): c#, 6/9 (2026-10-21)
+        choices = w[1].split(',')         # the OP-1's font draws # and /: c#, 6/9 (2026-10-21)
         if len(w[1]) > 95 or not all(re.match(r'^[a-z0-9_#/+-]+$', c) for c in choices):
             raise PluginError(f'manifest: setting {setting!r}: choices a,b,c (a-z 0-9 _ # / + -), 95 characters at '
                               'most')
@@ -250,7 +250,7 @@ def _run(cmd):
 def compile_sources(tc, src_dir, out_dir):
     """-> the objects of DIR's sources, compiled against the SDK and op1fw.h in plugin form."""
     import fwheader
-    if os.path.isfile(fwheader.FUNCTIONS):  # from the atlas; the authors' kit has none: its sdk/op1fw.h is found
+    if os.path.isfile(fwheader.FUNCTIONS):  # made from the function table; the kit has none: its sdk/op1fw.h is found
         with open(os.path.join(out_dir, 'op1fw.h'), 'w', newline='\n', encoding='utf-8') as f:
             f.write(fwheader.generate(plugin=True))
     sources = sorted(f for f in os.listdir(src_dir) if os.path.splitext(f)[1] in ('.c', '.s', '.S'))
@@ -285,7 +285,7 @@ def called_imports(tc, objs):
 
 def write_stubs(names, path):
     """An assembly file: for each called import NAME (its ELF name _NAME) a stub _NAME loading the import
-    _opimp_NAME into P1 and jumping there.  P1 is the caller's to lose at a call (F0064: GCC passes in
+    _opimp_NAME into P1 and jumping there.  P1 is the caller's to lose at a call (GCC passes in
     R0-R2 and keeps P3-P5)."""
     out = ['/* Generated by tools/op1mod/plugin.py: the stubs for the called imports. */', '        .text']
     for elf in names:
@@ -336,7 +336,7 @@ def replay(addr, expect):
     """The instructions a jump place covers, repeated in its way back (orig_ADDR): -> their texts. Refused
     (PluginError) unless they are whole instructions that can run elsewhere: no target relative to the PC (a branch,
     a call, a loop's setup), no other change of flow, nothing naming P0 (the way back jumps on with it, free at a
-    function's entry: GCC passes in R0-R2, F0064)."""
+    function's entry: GCC passes in R0-R2)."""
     _re_path()
     from op1re.bfdis import Dis, insn_length
     d, at, texts = Dis(), 0, []
@@ -424,10 +424,10 @@ def read_cpu(src_dir):
 
 
 def cpu_from(src_dir, report_path, name='cpu'):
-    """DIR/cpu.txt from a test's report (op1mod test's `expect report cpu CYCLE ADDR`, the plugin's worst block): ->
+    """DIR/cpu.txt from a test's report (an emulator test's `expect report cpu CYCLE ADDR`, the plugin's worst block): ->
     the cycles written, the largest of its ok reports (a test whose starts each report their worst block, 2026-10-27:
-    outatime's power at full in a second start). The build turns it into the manifest's cpu line (contract §6, §8:
-    measured, not by hand)."""
+    outatime's power at full in a second start). The build turns it into the manifest's cpu line (measured, not by
+    hand)."""
     found = None
     for line in open(report_path, encoding='utf-8'):
         m = re.search(r'\breport ' + re.escape(name) + r' (\d+)\s*$', line)
@@ -437,7 +437,7 @@ def cpu_from(src_dir, report_path, name='cpu'):
         raise PluginError(f'{report_path}: no "report {name} N" line (the test needs `expect report {name} CYCLE ADDR`)')
     timing = ' (memory timing)' if 'memory-timing' in os.path.abspath(report_path) else ''
     lines = ["# The plugin's CPU figure: its worst audio block in cycles, measured in the emulator (op1mod plugin",
-             "# --cpu-from); the build writes it as the manifest's cpu line, the budget the core holds it to (contract §8).",
+             "# --cpu-from); the build writes it as the manifest's cpu line, the budget the core holds it to.",
              f'cycles {found}',
              f'measured {time.strftime("%Y-%m-%d")} {os.path.basename(report_path)}{timing}']
     with open(os.path.join(src_dir, CPU_FILE), 'w', encoding='utf-8', newline='\n') as f:
@@ -658,7 +658,7 @@ def read_manifest_built(text):
 
 CORE = os.path.join(REPO, 'mods', 'opus2')
 LDR = os.path.join(REPO, 'firmware', 'OP1_vdk.ldr')
-FAR_POOL = 0x00400000                      # loader.c POOL_LO..POOL_HI (F0234), shared with opus_alloc
+FAR_POOL = 0x00400000                      # loader.c POOL_LO..POOL_HI, shared with opus_alloc
 FX_PLACE_RE = re.compile(r'\{\s*(0x[0-9A-Fa-f]+),\s*P_(CALL|JUMP|LDIMM|WORD),\s*(\d+),\s*\(u32\)\w+,\s*\{([^}]*)\}\s*\}')
 PAGE_PLACE_RE = re.compile(r'\{\s*(0x[0-9A-Fa-f]+),\s*(\d+),\s*\(u32\)fxhost_\w+,\s*\{([^}]*)\}\s*\}')   # fxhost.c: jumps
 
@@ -965,54 +965,7 @@ int opl_init(struct opl_self *self)
 }
 """
 
-NEW_TEST = """# @ID@'s emulator test (`op1mod plugin new`): from the repository,
-#   python tools/op1mod/op1mod.py test mods/opus2 --out work/@FILE@ --test @ABS@
-# Phase 1 boots the warm flash; the restart puts the plugin (built from this folder) into /yaffs2/mod/mods, alone:
-# row 0 loaded. The menu (synth + drum + tape + mixer), t2: the mods list, the plugin's panel drawn by its code;
-# green turns its level (the panel drawn again). Add the plugin's own checks below.
-mod-only
-base work/emu-m3/presets_warm.img
---sport-word-hz 88200
---run-until 1000000000
-
-reboot
-put /mod/mods/@FILE@.opmod @REL@
---sport-word-hz 88200
---run-until 4000000000
---key 2900000000:synth:down
---key 2950000000:drum:down
---key 3000000000:tape:down
---key 3050000000:mixer:down
---key 3150000000:mixer:up
---key 3160000000:tape:up
---key 3170000000:drum:up
---key 3180000000:synth:up
---key 3400000000:t2:down
---key 3430000000:t2:up
---encoder 3600000000:2:3
-expect mem 2550000000 rows+0x60 00000000                  # loaded
-expect advances 3450000000 3850000000 panel_draws          # its panel drawn
-expect differs 3550000000 3750000000                      # green: its level moves, the panel drawn again
-"""
-
-NEW_README = """# @ID@
-
-A new Opus 2 plugin, written by `op1mod plugin new @ID@`. Commands from the repository's root:
-
-- **Build:** `python tools/op1mod/op1mod.py plugin @REL@ --out work/@FILE@/@FILE@.opmod`
-- **Read it back as the core would:** `python tools/op1mod/op1mod.py plugin --show work/@FILE@/@FILE@.opmod`
-- **Would it load beside other plugins?** `python tools/op1mod/op1mod.py plugin --check work/@FILE@/@FILE@.opmod OTHER.opmod ...`
-- **Test it in the emulator:** `python tools/op1mod/op1mod.py test mods/opus2 --out work/@FILE@ --test @ABS@`
-  (test.txt: it loads, its panel draws, green turns its level; add its own checks there).
-- **On the OP-1:** connect it in disk mode (shift + COM, then T3), copy the .opmod into the disk's MODS folder,
-  eject, and switch the OP-1 off and on. Open the mods list (hold synth, drum, tape and mixer, then t2): its row
-  shows "loaded" or why not; blue push its settings, green push its controls, orange push its details.
-- **When it works,** record where: `checked emulator DATE test.txt` and `checked device DATE what you ran`
-  in manifest.txt (`--show` and `--check` show them).
-
-The manifest's lines: docs/design/opus2-contract.md §6; the core's names: §5 and mods/opus2/sdk/opus_plugin.h; the
-firmware's functions by name: op1fw.h, from atlas/functions.csv.
-"""
+NEW_TEST = NEW_README = None              # the repository's own, below (the authors' kit has KIT_README)
 
 KIT_README = """# @ID@
 
@@ -1031,7 +984,7 @@ What it can call: docs/api.md; its manifest's lines: docs/manifest.md; the rules
 
 def new(plugin_id, where=None, kit=False):
     """`op1mod plugin new ID`: a working plugin folder (manifest.txt, a source, test.txt, README.md) at `where`
-    (default mods/opus2/plugins/ID) -> the folder. Refused when the id is not author.plugin or the folder exists.
+    (default the repository's plugins folder, ID) -> the folder. Refused when the id is not author.plugin or the folder exists.
     kit: the authors' kit's (plugin_tool.py): its README, no emulator test (the kit has no emulator yet)."""
     if not ID_RE.match(plugin_id) or len(plugin_id) > 47:
         raise PluginError(f'{plugin_id!r}: an id is author.plugin, a-z 0-9 _ and dots, up to 47 characters')

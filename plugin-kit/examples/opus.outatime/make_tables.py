@@ -1,13 +1,12 @@
-"""outatime's tables (ota_tables.h). The sound is lab's design, the owner's choice of 2026-10-25, as the owner then
-shaped it ("discard the 88 mph jump zap ... a constant time-travel, morph sounding effect"; "it should be just a strong
-overdrive"; "the volume is super inconsistent when changing settings"; time drift and ignition chosen): three
+"""outatime's tables (ota_tables.h). The sound as it was shaped on the device (a constant time-travel morph, not a
+jump effect; a strong overdrive; a level that stays even when the settings change; time drift and ignition): three
 oscillators a voice, the flux capacitor's arms; YEAR their era's wave; SPEED the time drift, the arms at different
 points in time travelling around the year; POWER a strong overdrive; TRAIL the ignition, each note bright then burning
 down through a resonant filter. The Blackfin has no floating point, so every curve is a table, and every stage that
 changes the level has its loudness matched here, by simulation. A knob's table has 257 entries over the knob's
 0-32767 (index v >> 7, the next one for the fraction).
 
-    python -I mods/opus2/plugins/opus.outatime/make_tables.py
+    python -I make_tables.py        (it writes ota_tables.h beside itself)
 """
 import math
 import os

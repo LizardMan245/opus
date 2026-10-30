@@ -3,7 +3,7 @@ t1.svg, t2.svg, t4.svg) before it goes on the device.
 
     python tools/op1mod/svgcheck.py FILE.svg [FILE.svg ...]
 
-The OS's own SVG parser (atlas F0197) draws a small part of SVG, drops much without a word, and stops the OP-1 (the
+The OS's own SVG parser draws a small part of SVG, drops much without a word, and stops the OP-1 (the
 crash screen) on a few things. Errors are those (the core checks the same before it loads a file, art.c, and refuses
 it): an XML error, a root other than <svg>, a number with a point and no or more than four decimals, an exponent,
 the path commands Q and T, an id with "_x" not followed by two characters and "_". Warnings are what it drops or

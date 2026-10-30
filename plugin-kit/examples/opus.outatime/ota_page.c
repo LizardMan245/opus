@@ -1,30 +1,27 @@
-/* outatime's T1: the owner's time-machine page (the design reference F:\OP1firmware\artwork\outatime\v3, its drawing code
- * ported), its instruments taken over by meaning (the owner, 2026-10-26, plan §6 point 20):
+/* outatime's T1: the time-machine page (the design reference v3, its drawing code ported), its instruments taken
+ * over by meaning (2026-10-26):
  *
  * What the user set (DEST, the meter's arc and digits, the readout, the tabs' numbers) shows opus_engine_knobs (the
- * stored knobs in core 2.3-2.7; since core 2.8 the LFO in while a note sounds: the owner, 2026-10-28, every value
+ * stored knobs in core 2.3-2.7; since core 2.8 the LFO in while a note sounds, 2026-10-28: every value
  * follows the modulation); what the sound does (PRES, the needle and the car, the rods, the fire) the live ones
  * (opus_engine_live), as the OS's own engine screens move with it.
  *
- *   year  (blue)    the time circuits, each row the OP-1's own month, day and time (opus_clock, core 2.4; the owner
- *                   on the device, 2026-10-26: "only the year changes with the parameter"): DEST the destination, PRES
+ *   year  (blue)    the time circuits, each row the OP-1's own month, day and time (opus_clock, core 2.4; only
+ *                   the year changes with the knob): DEST the destination, PRES
  *                   the first arm's year as the time drift moves it (ota_arm_year), LAST the destination before the
- *                   last change; PRES a darker green (the owner, 2026-10-26: "present date should be a darker
- *                   shade of the green encoder color")
+ *                   last change; PRES a darker shade of the green
+ *                   encoder's colour
  *   speed (green)   the speedometer (its arc and digits the knob, the needle the car's speed), the road, the wheels
- *                   (their spokes in the first encoder's colour, as v3's: the owner, 2026-10-26)
+ *                   (their spokes in the first encoder's colour, as v3's)
  *   power (white)   the flux capacitor: its rods are the three arms, each glowing with power and, while a note plays,
  *                   breathing at its place in the time drift; the readout in gigawatts; the current along all three
- *                   time cables (the owner, 2026-10-26: "there are actually 3 of those cables, those should have it
- *                   too"), at one speed, fewer pulses on a shorter cable, none where a cable passes behind the body
- *   trail (orange)  the fire: once the needle reaches the set speed (the owner, 2026-10-26: "the flames should only
- *                   start appearing when the speed meter reaches the set maximum"), as high as trail while a key is
+ *                   time cables, at one speed, fewer pulses on a shorter cable, none where a cable passes behind the body
+ *   trail (orange)  the fire: once the needle reaches the set speed, as high as trail while a key is
  *                   down, burning down after the last one over the trail's time (40 ms to 1.4 s, the ignition's), new
  *                   flames only while the needle stays there; each flame's colour, glow and size fade with its age, its
- *                   flicker blended between draws (the owner, 2026-10-26: "the fire trails don't fade smoothly ...
- *                   they should keep their intensity while notes are held down"); the white-hot core fades out with
- *                   its age and its height (the owner: "the little flames inside the bigger one still cut hard"); a
- *                   trail half as long again as v3's (the owner: "the flame trail should be adjusted generally longer")
+ *                   flicker blended between draws, its intensity kept while notes are held down; the white-hot
+ *                   core fades out with its age and its height, so the small flames inside the big one fade too; a
+ *                   trail half as long again as v3's
  *   shift           spread, tone and flux on the blue, green and white tabs; the overdrive's type on trail's (1.2:
  *                   shift + orange turns it)
  *
@@ -35,11 +32,11 @@
  * the parts that change with a setting (the rows, the meter, the readout, the tabs' names) are drawn when they change
  * and kept too (zones); every frame copies them back and draws what moves (the road, the fire, the wheels, the needle,
  * the rods, the current) with the core's smoothed lines (path.c: far cheaper than the OS's renderer). The animation
- * runs on the cycle counter (400 MHz, F0071) as v3's preview runs on the clock. The colours follow the encoders'
+ * runs on the cycle counter (400 MHz) as v3's preview runs on the clock. The colours follow the encoders'
  * (the user's picks, a theme): everything is made again when one changes. Its cost, a frame on rev 2 with the cache
  * timing (test_outatime_page, 2026-10-26): parked 0.93 M cycles, a note held 1.24 M, flat out 1.05 M, the worst frame
  * 3.5 M (the year crossing 1970 or 2000: every row's fields at once), the art made 21.8 M once; 28.5 frames a second
- * (F0045), so 0.93 M is about 6.6 % of the CPU. */
+ *, so 0.93 M is about 6.6 % of the CPU. */
 #include "opus_plugin.h"
 #include "op1fw.h"
 #include "ota_dsp.h"
@@ -728,7 +725,7 @@ int ota_page_frame(const short *set, const short *k, int shift, int held, const 
     stamp(dest_year, &now, key);
     row_zones(0, key, a0, shade(a0, 77));
     stamp(v ? ota_arm_year(k, v->drift, 0) : year, &now, key);
-    row_zones(1, key, shade(a1, 154), shade(a1, 46));   /* PRES: a darker green (the owner, 2026-10-26) */
+    row_zones(1, key, shade(a1, 154), shade(a1, 46));   /* PRES: a darker green */
     stamp(last_year < 0 ? dest_year : last_year, &now, key);
     row_zones(2, key, GREY, 0);
     key[0] = 'M';

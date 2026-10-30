@@ -1,11 +1,10 @@
-/* page.js: outatime's T1 art, from the owner's design reference F:\OP1firmware\artwork\outatime\v3 (outatime3.js:
-   "here is the design reference i made for you previously"), its instruments taken over by meaning (the owner,
-   2026-10-26, plan §6 point 20): the time circuits are year's (blue: DEST the destination, the PRES row the first
+/* page.js: outatime's T1 art, from the time-machine design reference v3 (outatime3.js), its instruments taken over
+   by meaning (2026-10-26): the time circuits are year's (blue: DEST the destination, the PRES row the first
    arm drifting with speed, LAST the year before), the speedometer, road and wheels speed's (green), the flux
    capacitor power's (white: the rods are the three arms, the readout gigawatts), the fire trail's (orange: each note
    lights it, it burns down as the ignition does). This file draws what never moves; ota_page.c draws the rest with
-   the places written next to the art (build.js). op1draw.js, opfont.json and car.json are copies of
-   artwork/lib/op1draw.js, opfont.json and artwork/outatime/v3/tools/car.json (the owner's time-machine car) of 2026-10-23.
+   the places written next to the art (build.js). op1draw.js, opfont.json and car.json (the time-machine car)
+   are copies of the design reference's own of 2026-10-23.
 */
 'use strict';
 const D = require('./op1draw.js');
@@ -14,8 +13,8 @@ const { C, line, path, fillPath, dot, ring, group, roundRect, textWidth, text, s
 
 // the OP-1's palette (stock colors.svg) and v3's roles; colours the user's picks change are placeholders the page
 // sets (opus_art_colour_slots): the fourth encoder's (the car's accents, the 88 tick), the second's dim (PRES's line),
-// the first's (the time cables' steady glow: the owner, 2026-10-26, "the blue cables ... don't inherit the theme's
-// colors")
+// the first's (the time cables' steady glow, so the
+// cables take the theme's colours)
 const K = {
   dkblue: C.dkblue, offblue: C.offblue, lavender: C.lavender, purplegrey: C.purplegrey, lightpurple: C.lightpurple,
   grey: C.grey, pink: C.pink, blue: C.blue, pu: '#FFD21A',
@@ -53,10 +52,10 @@ function samplePath(segs, steps = 8) {        // a path's points, each cubic in 
   }
   return pts;
 }
-// v3's trefoil, each shape filled and stroked a pixel wide in its colour (strokes are widths in the panel's pixels,
-// F0197): the OS's fill comes up half a pixel short at the bottom and right, and at about 15 pixels across the
-// blades lost their inner corners and lower edges, so the sign looked twisted (the owner, 2026-10-26: "the
-// radioactive sign looks twisted for some reason and no like on the reference"); the stroke gives the edges back
+// v3's trefoil, each shape filled and stroked a pixel wide in its colour (strokes are widths in the panel's pixels):
+// the OS's fill comes up half a pixel short at the bottom and right, and at about 15 pixels across the
+// blades lost their inner corners and lower edges, so the sign looked twisted, not like
+// the reference's; the stroke gives the edges back
 // and smooths them
 function trefoil(cx, cy, r, col) {
   const out = [], ri = r * 0.38, both = `fill="${col}" stroke="${col}" stroke-width="1" stroke-linejoin="round"`;
@@ -70,16 +69,15 @@ function trefoil(cx, cy, r, col) {
   return out;
 }
 
-// ------------------------------------------------------------------ the car (the owner's drawing), v3's place
+// ------------------------------------------------------------------ the car (v3's drawing), v3's place
 const S = 1.18, CX = x => (x - 19.4) * S + 8, CY = y => (y - 66.3) * S + 66, GROUND = 66.6;
 const carParts = CAR.parts.map(p => {
   if (p.circle) return { c: p.c, circle: [CX(p.circle[0]), CY(p.circle[1]), p.circle[2] * S] };
   return { c: p.c, segs: p.segs.map(s => (s[0] === 'z' ? ['z'] : [s[0], ...s.slice(1).map((v, i) => (i % 2 ? CY(v) : CX(v)))])) };
 });
 const wheels = CAR.wheels.map(w => ({ cx: CX(w.cx), cy: CY(w.cy), spokes: w.spokes.map(([a, r1, r2]) => [a, r1 * S, r2 * S]) }));
-// the time cables, the current along each (v3 ran it along the longest alone; the owner, 2026-10-26: "only one of
-// the blue cables has the pulsing power surge effect, but there are actually 3 of those cables, those should have it
-// too"): the drawing's blue parts in each cable's order, front to back (the sill; over the rear wheel and down the
+// the time cables, the current along each (v3 ran it along the longest alone, though the car has three):
+// the drawing's blue parts in each cable's order, front to back (the sill; over the rear wheel and down the
 // back; the tubes on top), a gap between two parts the cable behind the body. Part 55, a short mark, is no cable.
 const CABLE_PARTS = [[56], [59, 60, 61, 62, 63], [57, 58]];
 const cables = CABLE_PARTS.map(parts => parts.flatMap(i => {
@@ -89,8 +87,8 @@ const cables = CABLE_PARTS.map(parts => parts.flatMap(i => {
 const EMIT_X = wheels[1].cx + 6;
 
 // ------------------------------------------------------------------ the instruments
-// v3's three, the time circuits wider and its text bigger (the owner, 2026-10-26: "text is really small, it might
-// needs some layout redesign where you make the text bigger"): the speedometer's and the flux capacitor's panels
+// v3's three, the time circuits wider and its text bigger for reading:
+// the speedometer's and the flux capacitor's panels
 // narrower (the capacitor drawn at 0.9 of v3's), the rows' characters 13 tall (v3 11), the names 6 (v3 4.2), the
 // tabs' 7 (v3 5).
 const PD = [2.5, 77, 70, 145], PS = [74, 77, 251, 145], PF = [255, 77, 317.5, 145];
@@ -119,7 +117,7 @@ const TABS = [
   { x: 4, y: 8.2, words: [...nums.map(n => 'TRAIL ' + n),                                // top left, no frame;
                           ...['WARM', 'HARD', 'TUBE', 'FOLD'].map(t => 'DRIVE ' + t)] },  // shift: the overdrive (1.2)
   { x: PD[0] + 4, y: PD[1], words: ['SPEED', ...nums.map(n => 'TONE ' + n)] },      // tone green's, flux white's
-  { x: PS[0] + 4, y: PS[1], words: ['YEAR', ...nums.map(n => 'SPREAD ' + n)] },     // (the owner, 2026-10-26)
+  { x: PS[0] + 4, y: PS[1], words: ['YEAR', ...nums.map(n => 'SPREAD ' + n)] },
   { x: PF[0] + 4, y: PF[1], words: ['POWER', ...nums.map(n => 'FLUX ' + n)] },
 ];
 for (const t of TABS) t.w = Math.max(...t.words.map(w => textWidth(w, TAB_CAP))) + 2 * TAB_PAD;
@@ -176,7 +174,7 @@ const U = v => Math.round(v * 256);            // units x 256, the page service'
 const Q = v => Math.round(v * 4096);           // Q12
 function cHeader(svg) {
   const out = [];
-  out.push('/* outatime\'s T1 art and its places: made by art/build.js from art/page.js (the owner\'s v3 design, its');
+  out.push('/* outatime\'s T1 art and its places: made by art/build.js from art/page.js (the time-machine design v3, its');
   out.push(' * instruments by meaning). Do not edit by hand. Places in the drawing\'s units (320 x 160) x 256. */');
   out.push('#ifndef OTA_ART_H', '#define OTA_ART_H', '');
   out.push('static const char ota_art[] =');

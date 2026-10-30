@@ -1,4 +1,4 @@
-/* outatime's T1 art and its places: made by art/build.js from art/page.js (the owner's v3 design, its
+/* outatime's T1 art and its places: made by art/build.js from art/page.js (the time-machine design v3, its
  * instruments by meaning). Do not edit by hand. Places in the drawing's units (320 x 160) x 256. */
 #ifndef OTA_ART_H
 #define OTA_ART_H

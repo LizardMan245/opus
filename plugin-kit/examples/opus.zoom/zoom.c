@@ -1,8 +1,8 @@
-/* opus.zoom: better zoom (Opus 1's zoom.c, build 90; the owner, 2026-10-12: "shift + white encoder on the tape screen
- * zooms in/out (clockwise in)"). In stock that turn sets the tape speed in percent; the owner's choice: the zoom
+/* opus.zoom: better zoom (Opus 1's zoom.c, build 90; 2026-10-12: shift + the white encoder on the tape
+ * screen zooms in and out, clockwise in). In stock that turn sets the tape speed in percent; the choice: the zoom
  * replaces it there (plain white still sets the speed in semitone steps).
  *
- * The tape view's zoom is a float, pixels a second (F0222): the target [0x018C1838] and the shown value
+ * The tape view's zoom is a float, pixels a second: the target [0x018C1838] and the shown value
  * [0x018C183C], which the view's draw eases toward the target each frame (a doubling settles in about 0.4 s). Stock
  * only sets the target in its fit (0x01A5B0CC, 160 / the span to show, 40 when there is nothing to fit, never below
  * 5), which the draw runs when a loop edit asks for it; so a zoom set here holds until the next loop edit fits the
@@ -15,7 +15,7 @@
 #define SCREEN_NOW      (*(volatile const unsigned short *)0x018B65C8)
 #define TAPE_MODE       2
 #define TAPE_SCREEN     21                                     /* SCREEN_NOW on the tape screen, any page */
-#define ZOOM_TARGET     (*(volatile float *)0x018C1838)        /* pixels a second the view eases to (F0222) */
+#define ZOOM_TARGET     (*(volatile float *)0x018C1838)        /* pixels a second the view eases to */
 #define ZOOM_MIN        5.0f
 #define ZOOM_MAX        640.0f
 #define KNOB_WHITE      2

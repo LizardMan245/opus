@@ -1,8 +1,7 @@
-/* outatime's sound: lab's design, the owner's choice of 2026-10-25, then shaped by the owner on the device ("discard
- * the 88 mph jump zap effect and make that parameter more of a constant time-travel, morph sounding effect"; "the
- * electric sparks effect just sounds as annoying crackle ... it should be just a strong overdrive effect"; "the volume
- * is super inconsistent when changing settings"; time drift for speed, ignition for trail). Plain C, no SDK: the engine
- * (outatime.c) and the host renders (work/outatime) build the same file; every curve a table (make_tables.py: the
+/* outatime's sound, shaped on the device (2026-10-25): speed a constant time-travel morph rather than a jump effect,
+ * power a strong overdrive rather than electric sparks, a level that stays even when the settings change; time drift
+ * for speed, ignition for trail. Plain C, no SDK: the engine (outatime.c) and a renderer on the computer build the
+ * same file; every curve a table (make_tables.py: the
  * Blackfin has no floating point), every stage that would change the level matched there by simulation.
  *
  * A voice (88.2 kHz, the engine service's rate): three oscillators, the flux capacitor's arms.
@@ -237,7 +236,7 @@ static inline __attribute__((always_inline)) int shape(int v, int s)
 #define MATCH_MIN       64                 /* the make-up gain's range, Q12: 1/64 .. 2 */
 #define MATCH_MAX       8192
 /* Q12: a driven wave's lower rms at the same average level, made up at full drive (x 1.21; a fold gets less square:
- * x 1.05), each measured in the host renders (work/outatime/host, the 20_ renders at power 0, 50 and 99). */
+ * x 1.05), each measured in the host renders (the 20_ renders at power 0, 50 and 99). */
 static const short SQUARE[OTA_SHAPES] = { 860, 860, 860, 210 };
 #define DC_LEAK         47                 /* Q15: 2 pi 10 / 44100, the DC blocker's pole 1 - this */
 #define OUT_GAIN        6492               /* Q12: +4 dB after the match: the engine's level among the others */

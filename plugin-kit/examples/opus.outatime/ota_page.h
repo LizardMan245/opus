@@ -1,4 +1,4 @@
-/* outatime's T1 over the owner's time-machine art (ota_page.c). */
+/* outatime's T1 over its time-machine art (ota_page.c). */
 #ifndef OTA_PAGE_H
 #define OTA_PAGE_H
 

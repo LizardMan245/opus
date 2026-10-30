@@ -1,7 +1,7 @@
-# opus.halloween: the Halloween colour theme, the first code-free plugin (the owner, 2026-10-20: "we could also test
-# our code free plugins in the form of a halloween color theme preset file included in the pack"). No sources, so
+# opus.halloween: the Halloween colour theme, the first code-free plugin (2026-10-20: a test of code-free
+# plugins, a colour theme in the starter pack). No sources, so
 # the build writes an .opmod with no image; the core lists its theme in the menu's colours row (system, colours:
-# green steps to it) while the file is in /mods. The colours (the owner's yes, 2026-10-21: the proposal), in the
+# green steps to it) while the file is in /mods. The colours (2026-10-21), in the
 # encoders' order: purple for blue, slime green for green, bone white for white, pumpkin orange for orange.
 opmod     1
 id        opus.halloween

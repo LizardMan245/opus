@@ -1,5 +1,4 @@
-"""plugin_tool: make, build and read Opus 2 plugins (the authors' kit's command; the same code as op1-lab's
-`op1mod plugin`).
+"""plugin_tool: make, build and read Opus 2 plugins (the authors' kit's command).
 
     python plugin_tool.py new AUTHOR.NAME [--out DIR]       a working plugin folder (default plugins/AUTHOR.NAME)
     python plugin_tool.py build DIR [--out FILE.opmod]     DIR's sources and manifest.txt -> its .opmod
@@ -15,7 +14,7 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for lib in (os.path.join(HERE, 'tools', 'op1mod'), os.path.join(HERE, '..', 'op1mod')):   # the kit's, op1-lab's
+for lib in (os.path.join(HERE, 'tools', 'op1mod'), os.path.join(HERE, '..', 'op1mod')):   # the kit's, the repository's
     if os.path.isfile(os.path.join(lib, 'plugin.py')):
         sys.path.insert(0, os.path.normpath(lib))
         break

@@ -1,4 +1,4 @@
-/* opus.bitcrush: Opus 1's bitcrush (mods/opus/fx.c, build 90; F0117), its sound unchanged, as an effect plugin on
+/* opus.bitcrush: Opus 1's bitcrush (its fx.c, build 90), its sound unchanged, as an effect plugin on
  * the core's effect service (effects.c). */
 #include "opus_plugin.h"
 #include "op1fw.h"
@@ -24,7 +24,7 @@ struct state {
 
 /* The hold, the tone and the mix, each sample; open (the tone's low-pass open) and full (the mix all wet) fixed for the
  * block (2.0.1, 2026-10-28: tested every sample, both mispredicted at the defaults, they cost most of a sample; the
- * same output, a block 3,774 -> 1,639 cycles, work/bitcrush-opt). */
+ * same output, a block 3,774 -> 1,639 cycles). */
 static inline __attribute__((always_inline))
 void crush_n(struct chan *c, short *buf, int n, u32 inc, int step, int half, int a, int mix, int open, int full)
 {
@@ -49,7 +49,7 @@ void crush_n(struct chan *c, short *buf, int n, u32 inc, int step, int half, int
     c->lp = lp;
 }
 
-/* One channel, n samples in place. Rounding to the step, not truncation (F0117). */
+/* One channel, n samples in place. Rounding to the step, not truncation. */
 static void crush(struct chan *c, short *buf, int n, const short *par)
 {
     const int p0 = clamp15(par[0]), p1 = clamp15(par[1]), p2 = clamp15(par[2]), mix = clamp15(par[3]);

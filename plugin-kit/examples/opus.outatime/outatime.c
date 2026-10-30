@@ -1,6 +1,5 @@
-/* opus.outatime: a time-travel synth engine (the owner, 2026-10-25: a time-travel themed engine, "we need to figure
- * something exciting out for it that will show opus 2 capabilities"; the starter pack's, plan §6 point 20). The sound is lab's design the owner chose ("build that idea you told me before"), then shaped by the owner on
- * the device: no jump, the time drift for speed, a strong overdrive for power, the ignition for trail, the level kept
+/* opus.outatime: a time-travel synth engine (2026-10-25: the starter pack's, made to show what Opus 2 can do). The
+ * sound, shaped on the device: no jump, the time drift for speed, a strong overdrive for power, the ignition for trail, the level kept
  * whatever the settings (ota_dsp.c). The controls, each lit in its encoder's colour:
  *
  *   blue    year, 1955-2015          shift: spread, the arms' detune
@@ -9,18 +8,15 @@
  *   orange  trail, the ignition      shift: the overdrive's type (warm, hard, tube, fold)
  *
  * The shift layer is knobs 5-7 (spread, flux, tone), kept with the sound as the four are; a shift turn moves its knob
- * 3 of 99 a detent (the owner: "the values change very slowly when shift is held down"). Tone is green's and flux
- * white's (the owner on the device, 2026-10-26: "flux and tone parameters should switch places"); the knobs stay
+ * 3 of 99 a detent. Tone is green's and flux white's (2026-10-26, from playing it); the knobs stay
  * where sounds keep them. The OS's envelope (T2) shapes the voices. The page
- * (ota_page.c): the owner's time-machine art (v3), its instruments by meaning (the owner, 2026-10-26); until its art is
- * ready the controls' names and values (lower case: the font's capitals are icons, F0143). Its setting "always
- * driving" (off; the mods list's blue push) keeps the car driving at the set speed with its fire, no key down (the
- * owner, 2026-10-26: "a setting in its mod menu entry where i can set the car to always be moving at the set maximum
- * speed, drawing its trail"). The overdrive's type (warm, hard, tube, fold; 2026-10-27) chooses power's shape: on shift +
- * orange (1.2, 2026-10-30: BarneyBrown, t32014 #95, "it would be handy having the drive type effect available within
- * the synth itself as it's something I'd likely change fairly frequently"; the owner: "I can change that to shift +
- * orange, yes"), the sound's own since 1.3 (the owner, 2026-10-30: "it is now a sound level, preset determined value,
- * not a general, device-wide one"; a setting from 1.1 to 1.2): its engine data's byte, kept with the sound and its
+ * (ota_page.c): the time-machine art (v3), its instruments by meaning (2026-10-26); until its art is
+ * ready the controls' names and values (lower case: the font's capitals are icons). Its setting "always
+ * driving" (off; the mods list's blue push) keeps the car driving at the set speed with its fire, no key down
+ * (2026-10-26). The overdrive's type (warm, hard, tube, fold; 2026-10-27) chooses power's shape: on shift +
+ * orange (1.2, 2026-10-30: BarneyBrown's idea, op-forums t32014 #95: the drive type within the synth itself, as
+ * something changed often), the sound's own since 1.3 (2026-10-30: kept with the sound and its presets, not
+ * device-wide; a setting from 1.1 to 1.2): its engine data's byte, kept with the sound and its
  * presets; warm without one (a new sound). */
 #include "opus_plugin.h"
 #include "op1fw.h"
@@ -149,9 +145,9 @@ static int e_turn(int encoder, int detents, int page)
 
 /* ---------------------------------------------------------------- the page */
 
-/* The owner's art (ota_page.c); until it is ready a column for each encoder: its name in its colour, the value under
+/* The art (ota_page.c); until it is ready a column for each encoder: its name in its colour, the value under
  * it, a bar; under shift the shift layer's. Each text slot keeps one place and size (draw.c). A key counts as down
- * while the voices render: blocks seen in the last 300 ms (about 28 frames of the OS's 28.5 a second, F0045). */
+ * while the voices render: blocks seen in the last 300 ms (about 28 frames of the OS's 28.5 a second). */
 static void page(void)
 {
     static const char *const NAME[4] = { "year", "speed", "power", "trail" };

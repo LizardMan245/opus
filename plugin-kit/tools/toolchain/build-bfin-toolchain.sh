@@ -2,9 +2,9 @@
 # Build the Blackfin toolchain the mod tool uses: GNU binutils + GCC (C only, no C library)
 # for target bfin-elf, as native Windows executables.
 #
-#   wsl -d Ubuntu-22.04 -- bash /mnt/e/OP1firmware/op1-lab/tools/toolchain/build-bfin-toolchain.sh [step...]
+#   wsl -d Ubuntu-22.04 -- bash tools/toolchain/build-bfin-toolchain.sh [step...]   (from the repository's folder)
 #
-# WSL is only the factory (option B, 2026-09-30): the result in E:\OP1firmware\bfin-toolchain
+# WSL is only the factory (option B, 2026-09-30): the result in OUT (default: bfin-toolchain beside the repository)
 # runs on Windows without WSL.  A Windows-hosted GCC cannot build its own target library
 # (libgcc) on Linux, so the toolchain is built twice: first hosted on Linux (the helper),
 # then hosted on Windows ("Canadian cross"), whose libgcc is built with the helper.
@@ -22,7 +22,7 @@ HOST_WIN=x86_64-w64-mingw32
 WORK=${WORK:-/root/bfin-build}
 LINUX_PREFIX=$WORK/linux-install
 WIN_PREFIX=$WORK/win-install
-OUT=${OUT:-/mnt/e/OP1firmware/bfin-toolchain}
+OUT=${OUT:-$(cd "$(dirname "$0")/../../.." && pwd)/bfin-toolchain}   # beside the repository's folder
 JOBS=${JOBS:-$(nproc)}
 MIRROR=${MIRROR:-https://ftp.gnu.org/gnu}
 
@@ -114,7 +114,7 @@ step_install() {
     rm -f "$OUT/bin/$TARGET-lto-dump.exe"
     find "$OUT" -name '*.exe' -exec $HOST_WIN-strip {} +
     {
-        echo "Blackfin toolchain for op1-lab, built $(date -u +%Y-%m-%dT%H:%MZ) by tools/toolchain/build-bfin-toolchain.sh"
+        echo "Blackfin toolchain for Opus, built $(date -u +%Y-%m-%dT%H:%MZ) by tools/toolchain/build-bfin-toolchain.sh"
         echo "binutils $BINUTILS, GCC $GCC, target $TARGET, host $HOST_WIN, C only, no C library, no multilib"
         echo "configure (gcc): ${COMMON[*]} ${GCC_OPTS[*]}"
         echo
