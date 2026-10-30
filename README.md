@@ -7,8 +7,8 @@ A hobby project, built in free time and at its own pace. Help is always welcome,
 **Opus 2** is out as a beta: not a bigger pack, but a plugin manager for the OP-1. Its small core loads plugins,
 `.opmod` files you copy into a mods folder on the OP-1's disk. Add one, remove one, swap them, no reflashing. The
 starter pack has all of Opus 1's features as plugins, plus dx (a DX7 voice player for your own `.syx` banks),
-outatime (a time-travel synth engine), iter (the OP-1's own hidden engine) and a Halloween colour theme. The bridge,
-an alpha, runs op1r's and Hundekraft's synths, effects and sequencers on Opus.
+outatime (a time-travel synth engine), iter (the OP-1's own hidden engine), a trigger guard for worn keys and a
+Halloween colour theme. The bridge, an alpha, runs op1r's and Hundekraft's synths, effects and sequencers on Opus.
 
 - **The core:** make the update from your own stock firmware with the patcher at
   **https://opus-op1.pages.dev/patcher/**. It runs in your browser and nothing is uploaded.
@@ -69,6 +69,7 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.scales` | scales and chords |
 | `opus.bend` | pitch bend |
 | `opus.dice` | a random sound, and undo |
+| `opus.triggerguard` | a worn key that fires twice plays once |
 | `opus.tapeundo` | tape undo and redo |
 | `opus.zoom` | tape zoom |
 | `opus.playpause` | play as pause |

@@ -11,6 +11,6 @@ int ota_page_init(struct opl_self *self);
 /* The display thread, inside T1's draw: set the knobs as stored, k as the sound hears them (the LFO in), shift held,
  * held a key down or the setting "always driving" on (the car drives), v the newest note's voice (its ignition and time drift) or 0. 0 when the art is
  * not there (the plain page draws instead). */
-int ota_page_frame(const short *set, const short *k, int shift, int held, const struct ota_voice *v);
+int ota_page_frame(const short *set, const short *k, int shift, int held, const struct ota_voice *v, int shape);
 
 #endif

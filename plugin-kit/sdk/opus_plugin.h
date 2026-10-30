@@ -25,6 +25,14 @@ int opl_init(struct opl_self *self);
  * allocates or takes long; each is timed and charged to the plugin. block runs in the sequencer thread, once
  * per audio block before the MIDI drain, outside the interrupt. */
 void opus_on_key(struct opl_self *self, int (*fn)(int key, int pressed));
+/* A key event of the plugin's own (core 2.12): the OS and every key handler (the plugin's own too) take it as a real
+ * one, after the events already queued (the dev port's injection, F0212). The OS's key codes below 0x40. 1 queued, 0
+ * not (no such key, the queue full). Any thread. */
+int opus_key_post(int key, int pressed);
+/* A key filter (core 2.13): every key event first, as it came, before the core, Opus's menu, every key handler and the
+ * OS; 1 drops it (it never happened: no one sees it). For a plugin that cleans the keys themselves (the trigger guard);
+ * a filter that holds an event back and sends it later with opus_key_post sees it come back here. KeyHandler. */
+void opus_on_key_filter(struct opl_self *self, int (*fn)(int key, int pressed));
 /* FN (the OP-1's help key, the core's since 2026-10-17): 1 while held. A key handler also sees it as key 0; the OS
  * never does. A control with FN held is declared `uses INPUT fn ...` (nofn: without it). */
 int opus_fn_held(void);
@@ -111,6 +119,26 @@ void opus_on_block_end(struct opl_self *self, void (*fn)(void));
  * the pool has no room left (the plugin goes on without it, or refuses). Core 2.8: from the audio pool while it has
  * room beyond what it keeps for effects (below), else the main pool. */
 void *opus_alloc(struct opl_self *self, unsigned bytes);
+/* Which of your registered structs the core is calling now (core 2.9): from inside one of its functions, the
+ * opus_engine, opus_effect, opus_hosted_effect or opus_sequencer you registered it with (the audio interrupt's calls
+ * and each thread's apart); 0 outside them. For a plugin that registers several with one set of functions (the bridge,
+ * for other firmwares' files: 2026-10-29), as a VST host hands each call its instance. */
+const void *opus_called(void);
+/* A synth slot's sample (core 2.10, the sampler service): its sound, 16-bit mono at 44.1 kHz, and *frames its length
+ * (264,600: 6 s). Every slot has one whatever its engine; an engine with OPUS_ENGINE_SAMPLE finds its sound's sample
+ * there (the slot sounding now: opus_sound_slot(0)). Read only, from any thread: the OS writes it while it loads a
+ * sample or records one. 0 for a slot outside 0-7. */
+const short *opus_sample(int slot, unsigned *frames);
+/* 1 when synth slot 0-7's sound keeps its sample with it (core 2.10): a sampler's, or a sample engine's sound. A
+ * plugin that saves a sound itself (an overwrite save) saves the slot's synth_N.raw with it then, as the OS's own
+ * save does. */
+int opus_sample_sound(int slot);
+/* The key synth slot 0-7's sound was sampled at, as the OS's base_freq in milli-Hz (174.614 Hz x 2^(k/12), k the key
+ * that ended the recording, 0-23 from the left: 523,251 for the C), and *end the recorded end in frames, as mic or
+ * shift + mic and a held note left them for this sound (core 2.10: the sampler service; they travel with the sound
+ * and its presets). 0 (and *end 0) when this sound was never sampled. Any thread (the core's copy, as
+ * opus_engine_data). */
+unsigned opus_sample_base(int slot, unsigned *end);
 /* Memory the audio reads every block (a delay line, a voice's tables; core 2.8): as opus_alloc, but it may take the
  * audio pool's last 512 KB too, which plain asks leave to effects' instances (the pool: 1.3 MB the display's DMA does
  * not share; in the main pool such memory costs about twice as much while the display sends one of its two frames,
@@ -452,10 +480,15 @@ struct opus_engine {
  * OS gives them (no LFO reach). For engines written for iter's layout: op1r's and kennel's find their voice and its
  * velocity from the object's address. */
 #define OPUS_ENGINE_OS_VOICES 4
+/* The engine plays the slot's sample (core 2.10, the sampler service; 2026-10-29): the core makes the OS load the slot's
+ * sample for its sounds as it does for the sampler's (the start, the browser, the engine's choice), save it with them
+ * (the OS's save and the overwrite save), and sample into it (mic or shift + mic, a held note: the sound stays the
+ * engine's). Its voices read it with opus_sample; the key it was sampled at with opus_sample_base. */
+#define OPUS_ENGINE_SAMPLE 8
 
 /* Adds an engine (from opl_init) -> its mark (1-32767, the same on every OP-1: from the plugin's id and the
- * engine's name, or the one it claims), or < 0: a bad struct or no room (-1; 32 engines in all, 8 of them with a
- * block handler; a claimed mark outside 0x5301-0x53FF), no memory for its voices (-2), its mark or type taken by an
+ * engine's name, or the one it claims), or < 0: a bad struct (-1; a claimed mark outside 0x5301-0x53FF; since core
+ * 2.9 no fixed count of engines), no memory for its voices (-2), its mark or type taken by an
  * engine loaded before (-3), the service could not start (-4: a place is a plugin's; the boot log). */
 int opus_engine_add(struct opl_self *self, const struct opus_engine *e);
 /* The current sound's knobs as its newest note's voice last heard them (the LFOs in) and 1 while a voice plays,
@@ -552,6 +585,14 @@ int opus_art_open(struct opl_self *self, const char *path);
  * folder (/yaffs2/mod/<id>/<name>) when missing or different, inside the flash's headroom, then opened as above.
  * From opl_init (the file system's thread); -1 also when the flash has no room or the write failed (the boot log). */
 int opus_art_text(struct opl_self *self, const char *name, const char *svg, unsigned len);
+/* An OS screen's drawing replaced by the plugin's (core 2.11; content layering, docs/design/opus2-contract.md §9a):
+ * from opl_init (the OS parses its screens after the plugins' inits). os_path: the screen's file,
+ * "/yaffs2/content/display/NAME.svg" (only screens' drawings yet); data, len: the plugin's SVG, kept in its folder
+ * (written when it changed). The OS's file stays as it was: a start without the plugin draws the stock screen. Refused
+ * (the boot log says why) when the OS's parser would stop on it, when it lacks an element the stock drawing has (by
+ * id, as the parser reads ids, and of the same kind: the OS finds its elements by id), or when another plugin replaced
+ * that screen first. 0, -1 refused, -2 taken. */
+int opus_replace(struct opl_self *self, const char *os_path, const char *data, unsigned len);
 int opus_art_ready(int art);
 void opus_art_draw(int art);
 int opus_art_show(int art, const char *id, int on);

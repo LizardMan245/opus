@@ -35,6 +35,8 @@ and built from scratch for Opus. But an idea came from somewhere, and that deser
   bridged plugin stays its author's work.
 - **The flash fix:** op1r's release notes also pointed at recording wearing out good flash.
 - **The FN key:** help as a modifier for plugins' controls. Thanks to katerlouis, who suggested it too.
+- **The trigger guard:** u/Andromax_sussybaka's idea on r/OP1Mods, a guard against keys that fire twice. Opus's
+  plugin is its own take on it.
 
 ## Thanks
 

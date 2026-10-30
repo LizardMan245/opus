@@ -15,10 +15,10 @@ struct ota_voice {
     int low, band;                         /* its filter (a state-variable filter) */
 };
 
-/* The voices' sum: the overdrive (64 samples at 44.1 kHz). Its shapes (the setting "overdrive type"). */
+/* The voices' sum: the overdrive (64 samples at 44.1 kHz). Its shapes (the sound's type: shift + orange). */
 enum { OTA_WARM, OTA_HARD, OTA_TUBE, OTA_FOLD, OTA_SHAPES };
 struct ota_fx {
-    int shape;                             /* OTA_WARM .. OTA_FOLD, set from the plugin's setting */
+    int shape;                             /* OTA_WARM .. OTA_FOLD: the current sound's (outatime.c, each block) */
     int in, out;                           /* the level followers: the sum before the drive, the drive's (Q23) */
     int gain;                              /* the level match now (Q12) */
     int hp_x, hp_y;                        /* the DC blocker after the drive (the tube's asymmetry) */

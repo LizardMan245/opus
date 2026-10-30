@@ -42,8 +42,8 @@ run the OP-1, they can. So:
 3. **Build after every change** (`python plugin_tool.py build plugins/ID`). Warnings are errors; fix the cause,
    never silence it.
 4. **Hand it to the person with exact steps:** developer mode on (Opus's menu: synth + drum + tape + mixer, T1),
-   disk mode (shift + COM, then T3), copy the `.opmod` into the disk's mods folder, eject, restart, the mods list (the menu,
-   T2): its row says "loaded" or why not. Then what to press and what to listen for.
+   disk mode (shift + COM, then T3), copy the `.opmod` into the disk's mods folder, eject, restart, the mods list
+   (the menu, T2): its row says "loaded" or why not. Then what to press and what to listen for.
 5. **Ask what they saw and heard**, and fix from that. If the OP-1 crashed: the next start leaves the plugin out
    ("skipped: crashed") unless developer mode is on; holding Stop while switching on starts with no plugins.
 6. **Its CPU figure** (any plugin with audio code): have them play the heaviest case (all voices, chords, its

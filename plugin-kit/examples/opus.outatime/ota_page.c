@@ -25,7 +25,8 @@
  *                   they should keep their intensity while notes are held down"); the white-hot core fades out with
  *                   its age and its height (the owner: "the little flames inside the bigger one still cut hard"); a
  *                   trail half as long again as v3's (the owner: "the flame trail should be adjusted generally longer")
- *   shift           spread, tone and flux on the blue, green and white tabs; trail's tab dims
+ *   shift           spread, tone and flux on the blue, green and white tabs; the overdrive's type on trail's (1.2:
+ *                   shift + orange turns it)
  *
  * The plugin's setting "always driving" (outatime.c) drives the car with no key down: at the set speed, its fire at
  * trail's height, the current running.
@@ -620,7 +621,7 @@ int ota_page_init(struct opl_self *self)
 
 /* ---------------------------------------------------------------- a frame */
 
-int ota_page_frame(const short *set, const short *k, int shift, int held, const struct ota_voice *v)
+int ota_page_frame(const short *set, const short *k, int shift, int held, const struct ota_voice *v, int shape)
 {
     if (art < 0 || !opus_art_ready(art))
         return 0;
@@ -686,16 +687,22 @@ int ota_page_frame(const short *set, const short *k, int shift, int held, const 
 
     /* the zones */
     char key[24];
-    key[0] = 'T', key[1] = 'R', key[2] = 'A', key[3] = 'I', key[4] = 'L', key[5] = ' ';
-    two(key + 6, (clampk(set[OTA_TRAIL]) * 99 + 16383) / 32767);
-    key[8] = shift ? 's' : 0;
-    key[9] = 0;
+    static const char *const SHAPE[4] = { "WARM", "HARD", "TUBE", "FOLD" };   /* the overdrive's types (ota_dsp.h) */
+    if (shift) {                           /* DRIVE and the type: the zone's key is the tab's text */
+        const char *p = "DRIVE ", *q = SHAPE[shape & 3];
+        int n = 0;
+        while (*p)
+            key[n++] = *p++;
+        while (*q)
+            key[n++] = *q++;
+        key[n] = 0;
+    } else {
+        key[0] = 'T', key[1] = 'R', key[2] = 'A', key[3] = 'I', key[4] = 'L', key[5] = ' ';
+        two(key + 6, (clampk(set[OTA_TRAIL]) * 99 + 16383) / 32767);
+        key[8] = 0;
+    }
     if (!zone_put(Z_TRAIL, key)) {
-        char s[9];
-        for (int i = 0; i < 8; ++i)
-            s[i] = key[i];
-        s[8] = 0;
-        tab_name(0, s, shift ? shade(a3, 77) : a3);
+        tab_name(0, key, a3);
         zone_keep(Z_TRAIL, key);
     }
     static const char *const NAME[3] = { "SPEED", "YEAR", "POWER" }, *const SHIFTED[3] = { "TONE ", "SPREAD ", "FLUX " };

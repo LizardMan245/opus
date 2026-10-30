@@ -113,6 +113,11 @@ Most of the API is in core 2.0. These came later; set `core` to the highest vers
 | 2.6 | another firmware's engines and effects (below the table) |
 | 2.7 | `opus_on_settings_rows` |
 | 2.8 | `opus_alloc_audio`, `opus_page_still`, sequencers: `opus_seq_register` and the rest of the Sequencers section |
+| 2.9 | `opus_called`; no fixed counts of engines, effect types, hosted effects, instances or sequencers |
+| 2.10 | the sampler service: `OPUS_ENGINE_SAMPLE` and the Samples section |
+| 2.11 | `opus_replace`: an OS screen's drawing replaced |
+| 2.12 | `opus_key_post` |
+| 2.13 | `opus_on_key_filter` |
 
 Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`, `svg`, `screen_init` and
 `screen_draw`; `struct opus_hosted_effect` and `opus_effect_host`.
@@ -139,6 +144,7 @@ Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`,
 - [Journals](#journals): changes in several steps that survive a power cut
 - [Presets](#presets): the synth presets as the browser lists them
 - [Memory](#memory): the pool, the audio pool, fast memory
+- [Which one is called](#which-one-is-called)
 - [CPU and the log](#cpu-and-the-log)
 - [Settings](#settings): the manifest's settings, a plugin's own rows on the settings page
 - [Switched places](#switched-places)
@@ -150,6 +156,7 @@ Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`,
 - [Another firmware's effects](#another-firmwares-effects)
 - [Managers](#managers): running instances of any effect type
 - [Engines](#engines): synth engines in the OS's engine list
+- [Samples](#samples): a slot's sample, the sampler service for an engine that plays it
 - [Sequencers](#sequencers): sequencers in the OS's sequencer list
 - [Pages](#pages): drawing a plugin's own page
 - [Paths](#paths): lines and curves drawn by the OS's renderer
@@ -232,6 +239,27 @@ void opus_on_key(struct opl_self *self, int (*fn)(int key, int pressed));
 Your `fn` gets every key event in the key thread, before the OS: `key` is the key code (table above), `pressed` 1 for
 down and 0 for up. Return 1 to take the event: no later handler and not the OS sees it. Return 0 to pass it on. The
 FN key (the help key, code 0) comes here too, but never reaches the OS.
+
+```c
+int opus_key_post(int key, int pressed);
+```
+
+Sends a key event of the plugin's own (core 2.12): it joins the OS's key queue after the events already there, and
+every key handler (the plugin's own too) and the OS take it as a real press or release. Key codes below 0x40. Returns
+1 when queued, 0 when not (no such key, the queue full: try again later). Any thread. A plugin that holds a key event
+back (takes it) and sends it later uses this: opus.triggerguard sends a release once its window ran out, and lets the
+event it sent through when it comes back to its own filter.
+
+```c
+void opus_on_key_filter(struct opl_self *self, int (*fn)(int key, int pressed));
+```
+
+A key filter (core 2.13): your `fn` gets every key event first, as it came from the keys, before the core's own
+handling, Opus's menu, every `opus_on_key` handler and the OS. Return 1 to drop the event: it never happened, no one
+sees it (no `opus_on_key_after` either). Return 0 to pass it on. For a plugin that cleans the keys themselves, as the
+trigger guard does. A key handler that sits behind the menu and other plugins is wrong for that: they would see the
+events you hold back. Keep presses and releases paired for everyone behind you: drop a press, drop its release too.
+An event a filter sends with `opus_key_post` comes back through every filter, the sender's too.
 
 ```c
 int opus_fn_held(void);
@@ -564,6 +592,18 @@ a pool buffer). Only from `opl_init`. Worth it for what an audio block touches e
 block's settings): each 32-byte line of ordinary memory an audio block touches costs about 107 cycles a block on the
 device. Each call writes a line to the boot log.
 
+## Which one is called
+
+```c
+const void *opus_called(void);
+```
+
+From inside one of your engine's, effect's or sequencer's functions, the struct you registered it with (`struct
+opus_engine`, `opus_effect`, `opus_hosted_effect` or `opus_sequencer`); 0 outside them. The audio block's calls and
+each thread's are kept apart, so it is right in every thread. A plugin that registers several with one set of
+functions tells them apart this way, as a VST host hands each call its instance: put your struct first in a record
+of your own and cast `opus_called()` back to the record. Core 2.9.
+
 ## CPU and the log
 
 ```c
@@ -657,6 +697,10 @@ there that is new or changed (with the folder's ending, not empty, at most `max`
 file and handed to the plugin's `take`, which keeps it in its own form or refuses it; a file deleted on the computer
 is deleted from the folder; then, if anything changed, `changed` runs. Up to 64 files a folder, names up to 63
 characters. Names starting with `.`, files without the ending, subfolders, hidden and system files are left alone.
+
+A disk mode that never ends (the OP-1 switched off or unplugged in it, no eject) is caught at the next start: the
+core hands the files to `take` the same way, before the OS empties the disk, deletes nothing, runs no `changed`, and
+restarts the OP-1 once so every plugin starts with them (the boot picture's bar shows it).
 
 ```c
 #ifndef OPUS_FOLDER_DEFINED
@@ -1254,6 +1298,7 @@ them).
 #define OPUS_ENGINE_OWN_ENVELOPE 1
 #define OPUS_ENGINE_OWN_LFO 2
 #define OPUS_ENGINE_OS_VOICES 4
+#define OPUS_ENGINE_SAMPLE 8
 ```
 
 - `OPUS_ENGINE_OWN_ENVELOPE`: the engine shapes the volume itself, its release and the velocity included (its T2
@@ -1269,6 +1314,8 @@ them).
   0xFFB00000 + 0x24 x voice: the first word is the OS's (never write it), the other 32 bytes the engine's. `init`,
   `note_on`, `release`, `render` and `finished` get that object (`voice` 0: the core keeps no state), and `render` the
   knobs as the OS gives them (no LFO reach). For engines written for `iter`'s layout. Needs core 2.6.
+- `OPUS_ENGINE_SAMPLE`: the engine plays the slot's sample: the OS treats its sounds' sample as the sampler's (see
+  [Samples](#samples)). Needs core 2.10.
 
 ```c
 int opus_engine_add(struct opl_self *self, const struct opus_engine *e);
@@ -1277,8 +1324,8 @@ int opus_engine_add(struct opl_self *self, const struct opus_engine *e);
 Adds an engine, from `opl_init`. The struct must stay valid: make it `static const`. Returns its mark (from 0x100 to
 32767, the same on every OP-1: made from the plugin's id and the engine's name, or the one it claims), or:
 
-- -1: a bad struct (too short, no name, no `render`), a claimed mark outside 0x5301-0x53FF, or no room (32 engines in
-  all, 8 of them with a `block` handler);
+- -1: a bad struct (too short, no name, no `render`) or a claimed mark outside 0x5301-0x53FF (since core 2.9 there
+  is no fixed count of engines; core 2.0-2.8 also refused a 33rd, or a 9th with a `block` handler);
 - -2: no memory for its voices;
 - -3: its mark or type is taken by an engine loaded before;
 - -4: the engine service could not start (one of its places is a plugin's; see the boot log).
@@ -1328,6 +1375,45 @@ sound, so it travels with it: the OS's save makes a user preset holding it, and 
   sound is no engine's or `n` is out of range. Key thread (a turn or key handler).
 - `opus_engine_sound_name(buf, max)`: the sound's name as the OS keeps it (the engine's name when chosen, a user
   preset's after the OS's save or a load), up to 23 characters, 0-terminated in `buf`. Returns its length. Any thread.
+
+## Samples
+
+Every synth slot has a sample buffer, whatever its engine: 264,600 frames (6 seconds) of 16-bit mono at 44.1 kHz. The
+stock OS fills it, saves it and samples into it only for a sampler's sound. An engine whose struct sets
+`OPUS_ENGINE_SAMPLE` (a sample engine) gets the same for its sounds (core 2.10):
+
+- loaded: at the start, when the browser loads one of its presets, and when it is chosen in the engine list (the
+  slot's last saved sample; chosen over a sampler's sound, the buffer keeps that sample, its key and its end);
+- saved: with the OS's save (hold a slot key) and the overwrite save, in the preset's `.raw`, and the slot's own
+  sample whenever it changes;
+- on the USB disk: its presets' and its slot's `.aif` carry the sample, and an imported one brings it back;
+- sampled: mic or shift + mic opens the input menu with sampling on, as for the sampler; a held note records into the
+  slot's buffer, and when it ends the sound stays the engine's (the stock finish would make it a sampler), with the
+  key it was sampled at and the recorded end kept in it.
+
+In the engine list a sample engine's row is a folder with the sampler's samples as its column, as SAMPLER's is: a
+sample chosen there loads into the slot and the sound stays the engine's (its knobs kept when it already was), named
+after the sample, with its key and end. Moving onto the folder from another row chooses the engine and keeps the
+slot's sample.
+
+```c
+const short *opus_sample(int slot, unsigned *frames);
+int opus_sample_sound(int slot);
+unsigned opus_sample_base(int slot, unsigned *end);
+```
+
+- `opus_sample(slot, &frames)`: synth slot `slot`'s (0-7) sample, and its length in `frames` (264,600). The slot
+  sounding now is `opus_sound_slot(0)`. Read only, from any thread; the OS writes it while it loads or records a
+  sample. 0 for a slot outside 0-7.
+- `opus_sample_sound(slot)`: 1 when the slot's sound keeps a sample with it (a sampler's or a sample engine's). A
+  plugin that saves a sound itself saves the slot's `synth_N.raw` with it then, as the OS's own save does.
+- `opus_sample_base(slot, &end)`: the key the slot's sound was sampled at, as the OS's `base_freq` in milli-Hz
+  (174.614 Hz x 2^(k/12), k the key that ended the recording, 0-23 from the left: 523,251 for the C), and in `end` the
+  recorded end in frames. They travel with the sound and its presets. 0 (and `end` 0) when the sound was never
+  sampled. Any thread (the core's copy, as `opus_engine_data`).
+
+A voice that plays the sample at the played key's pitch steps through it at played Hz / base Hz frames a frame (44.1
+kHz both ways).
 
 ## Sequencers
 
@@ -1575,6 +1661,19 @@ opened as `opus_art_open`. `len`: the text's length, at most 64 KB. From `opl_in
 (no room in the table or on the flash, or the write failed: the boot log says which).
 
 ```c
+int opus_replace(struct opl_self *self, const char *os_path, const char *data, unsigned len);
+```
+
+Replaces one of the OS's own screens' drawings with the plugin's (core 2.11): `os_path` names the screen's file,
+`"/yaffs2/content/display/NAME.svg"` (only screens' drawings so far); `data`, `len` the plugin's SVG, carried as
+`opus_art_text`'s is and kept in its folder. Call it from `opl_init`: the OS draws its screens from their files, read
+after the plugins start. The OS's own file is never changed, so the OP-1 draws the stock screen again once the plugin
+is gone. The core refuses a drawing the OS's parser would stop on, one that lacks an element of the stock drawing (by
+its id, read as the parser reads ids: `ok_1_` is `ok`) or makes it another kind of element (the OS finds the parts it
+animates by id), and a screen another plugin replaced first; the boot log says why. So start from the stock file and
+add to it. Returns 0, -1 (refused) or -2 (taken). opus.overwrite's save screen (OVERWRITING) is one.
+
+```c
 int opus_art_ready(int art);
 ```
 
@@ -1712,6 +1811,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_art_text` | [Art](#art) |
 | `opus_art_turn` | [Art](#art) |
 | `opus_bgfile_idle` | [Files](#files) |
+| `opus_called` | [Which one is called](#which-one-is-called) |
 | `opus_clock` | [The clock](#the-clock) |
 | `opus_cpu_charge` | [CPU and the log](#cpu-and-the-log) |
 | `opus_effect_host` | [Another firmware's effects](#another-firmwares-effects) |
@@ -1754,8 +1854,10 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_on_frame` | [Events](#frames) |
 | `opus_on_frame_begin` | [Events](#frames) |
 | `opus_on_frame_under` | [Events](#frames) |
+| `opus_key_post` | [Events](#keys-and-encoders) |
 | `opus_on_key` | [Events](#keys-and-encoders) |
 | `opus_on_key_after` | [Events](#keys-and-encoders) |
+| `opus_on_key_filter` | [Events](#keys-and-encoders) |
 | `opus_on_knob` | [Events](#keys-and-encoders) |
 | `opus_on_knob_after` | [Events](#keys-and-encoders) |
 | `opus_on_main_pass` | [Events](#the-main-pass-the-clip-queue-and-tape-writes) |
@@ -1801,6 +1903,10 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_quick_page` | [Quick pages](#quick-pages) |
 | `opus_quick_show` | [Quick pages](#quick-pages) |
 | `opus_rename` | [Files](#files) |
+| `opus_replace` | [Art](#art) |
+| `opus_sample` | [Samples](#samples) |
+| `opus_sample_base` | [Samples](#samples) |
+| `opus_sample_sound` | [Samples](#samples) |
 | `opus_seq_mode` | [Sequencers](#sequencers) |
 | `opus_seq_register` | [Sequencers](#sequencers) |
 | `opus_set_setting` | [Settings](#settings) |

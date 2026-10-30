@@ -6,7 +6,7 @@
  *   blue    year, 1955-2015          shift: spread, the arms' detune
  *   green   speed, 0-88 mph          shift: tone, darker or brighter within the year
  *   white   power, 0-1.21 gigawatts  shift: flux, the ensemble (the arms' three-phase pitch modulation)
- *   orange  trail, the ignition      (none under shift)
+ *   orange  trail, the ignition      shift: the overdrive's type (warm, hard, tube, fold)
  *
  * The shift layer is knobs 5-7 (spread, flux, tone), kept with the sound as the four are; a shift turn moves its knob
  * 3 of 99 a detent (the owner: "the values change very slowly when shift is held down"). Tone is green's and flux
@@ -16,7 +16,12 @@
  * ready the controls' names and values (lower case: the font's capitals are icons, F0143). Its setting "always
  * driving" (off; the mods list's blue push) keeps the car driving at the set speed with its fire, no key down (the
  * owner, 2026-10-26: "a setting in its mod menu entry where i can set the car to always be moving at the set maximum
- * speed, drawing its trail"); "overdrive type" (warm, hard, tube, fold; 2026-10-27) chooses power's shape. */
+ * speed, drawing its trail"). The overdrive's type (warm, hard, tube, fold; 2026-10-27) chooses power's shape: on shift +
+ * orange (1.2, 2026-10-30: BarneyBrown, t32014 #95, "it would be handy having the drive type effect available within
+ * the synth itself as it's something I'd likely change fairly frequently"; the owner: "I can change that to shift +
+ * orange, yes"), the sound's own since 1.3 (the owner, 2026-10-30: "it is now a sound level, preset determined value,
+ * not a general, device-wide one"; a setting from 1.1 to 1.2): its engine data's byte, kept with the sound and its
+ * presets; warm without one (a new sound). */
 #include "opus_plugin.h"
 #include "op1fw.h"
 #include "ota_dsp.h"
@@ -95,11 +100,19 @@ static void v_render(void *voice, short *out, const short *par, const unsigned *
     render_sum += cycles() - t;
 }
 
+/* The current sound's overdrive type: its engine data's first byte (opus_engine_data, any thread), warm without one. */
+static int sound_shape(void)
+{
+    unsigned char d;
+    return opus_engine_data(&d, 1) == 1 && d < OTA_SHAPES ? d : OTA_WARM;
+}
+
 static void v_block(short *buf)
 {
     short par[8];
     for (int k = 0; k < 8; ++k)
         par[k] = heard[k];
+    fx.shape = sound_shape();              /* the sounding sound's (the block runs while it is the current one) */
     const unsigned t = cycles();
     ota_block(&fx, buf, par);
     const unsigned b = cycles() - t;
@@ -111,8 +124,8 @@ static void v_block(short *buf)
 
 /* ---------------------------------------------------------------- the controls */
 
-/* T1 with shift: blue, green and white are spread, tone and flux (SHIFT_KNOB), SHIFT_STEP of 99 a detent; orange has
- * none (taken, nothing changes). The rest the OS's. */
+/* T1 with shift: blue, green and white are spread, tone and flux (SHIFT_KNOB), SHIFT_STEP of 99 a detent; orange the
+ * overdrive's type, a type a detent, kept in the sound (opus_engine_data_set). The rest the OS's. */
 static int e_turn(int encoder, int detents, int page)
 {
     if (page != 0 || !fw_shift_held())
@@ -124,6 +137,12 @@ static int e_turn(int encoder, int detents, int page)
         int v = k99(k[i]) + SHIFT_STEP * detents;
         v = v < 0 ? 0 : v > 99 ? 99 : v;
         opus_engine_knob_set(i, (v * 32767 + 98) / 99);
+    } else if (encoder == 3 && detents) {
+        int s = sound_shape() + detents;
+        s = s < OTA_WARM ? OTA_WARM : s > OTA_FOLD ? OTA_FOLD : s;
+        const unsigned char d = (unsigned char)s;
+        opus_engine_data_set(&d, 1);
+        fx.shape = s;
     }
     return 1;
 }
@@ -136,7 +155,8 @@ static int e_turn(int encoder, int detents, int page)
 static void page(void)
 {
     static const char *const NAME[4] = { "year", "speed", "power", "trail" };
-    static const char *const SHIFTED[4] = { "spread", "tone", "flux", "trail" };
+    static const char *const SHIFTED[4] = { "spread", "tone", "flux", "drive" };
+    static const char *const SHAPE[OTA_SHAPES] = { "warm", "hard", "tube", "fold" };
     static unsigned seen, quiet;
     short k[8], set[8];
     opus_engine_live(k);
@@ -145,14 +165,17 @@ static void page(void)
     const unsigned b = blocks;
     quiet = b != seen ? 0 : quiet + 1;
     seen = b;
-    if (ota_page_frame(set, k, shift, (held_n > 0 && quiet < 9) || always, newest))
+    const int shape = sound_shape();
+    if (ota_page_frame(set, k, shift, (held_n > 0 && quiet < 9) || always, newest, shape))
         return;
     opus_page_text(me, 0, 10, 10, 13, OPUS_COLOR_TEXT, "outatime");
     for (int i = 0; i < 4; ++i) {
         static char value[4][16];
         const int x = 10 + 78 * i, y = 52;
-        const int lit = !shift || i < 3, v = shift && i < 3 ? k[SHIFT_KNOB[i]] : k[i];
-        if (!shift && i == 0)
+        const int lit = 1, v = shift && i < 3 ? k[SHIFT_KNOB[i]] : k[i];
+        if (shift && i == 3)
+            fw_snprintf(value[i], sizeof value[i], "%s", SHAPE[shape & 3]);
+        else if (!shift && i == 0)
             fw_snprintf(value[i], sizeof value[i], "%i", ota_year(v));
         else if (!shift && i == 1)
             fw_snprintf(value[i], sizeof value[i], "%i mph", ota_mph(v));
@@ -163,10 +186,13 @@ static void page(void)
             fw_snprintf(value[i], sizeof value[i], "%i", k99(v));
         opus_page_text(me, 1 + i, x, y, 13, lit ? OPUS_COLOR_E(i) : OPUS_COLOR_DIM, shift ? SHIFTED[i] : NAME[i]);
         opus_page_text(me, 5 + i, x, y + 24, 15, lit ? OPUS_COLOR_TEXT : OPUS_COLOR_DIM, lit ? value[i] : "-");
-        opus_page_bar(x, y + 56, x + 66, y + 60, (unsigned)(v < 0 ? 0 : v), 32767, lit ? OPUS_COLOR_E(i) : OPUS_COLOR_OFF);
+        if (shift && i == 3)
+            opus_page_bar(x, y + 56, x + 66, y + 60, (unsigned)(shape & 3), OTA_FOLD, OPUS_COLOR_E(i));
+        else
+            opus_page_bar(x, y + 56, x + 66, y + 60, (unsigned)(v < 0 ? 0 : v), 32767, lit ? OPUS_COLOR_E(i) : OPUS_COLOR_OFF);
     }
     opus_page_text(me, 9, 10, 132, 9, OPUS_COLOR_DIM,
-                   shift ? "release shift: year, speed, power" : "shift: spread, tone, flux");
+                   shift ? "release shift: year, speed, power, trail" : "shift: spread, tone, flux, drive");
 }
 
 /* ---------------------------------------------------------------- the engine */
@@ -190,8 +216,6 @@ static void setting(const char *name, int value)
 {
     if (name[0] == 'd')                    /* drive: "always driving" */
         always = value;
-    else if (name[0] == 's')               /* shape: the overdrive's (an int the audio reads whole) */
-        fx.shape = value;
 }
 
 int opl_init(struct opl_self *self)
@@ -200,7 +224,6 @@ int opl_init(struct opl_self *self)
     always = opus_setting(self, "drive");
     opus_on_setting(self, setting);
     ota_fx_init(&fx);
-    fx.shape = opus_setting(self, "shape");
     ota_fast((short *)opus_fast(self, (unsigned)ota_fast_bytes()));   /* the era waves in L1, or read in SDRAM */
     ota_page_init(self);                   /* without its art or memory: the plain page */
     return opus_engine_add(self, &OUTATIME) < 0 ? -1 : 0;

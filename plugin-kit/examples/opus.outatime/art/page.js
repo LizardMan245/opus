@@ -116,7 +116,8 @@ const cols = {};
 const nums = Array.from({ length: 100 }, (_, i) => String(i).padStart(2, '0'));
 const TAB_CAP = 7, TAB_H = 4.8, TAB_PAD = 4;
 const TABS = [
-  { x: 4, y: 8.2, words: nums.map(n => 'TRAIL ' + n) },                                   // top left, no frame
+  { x: 4, y: 8.2, words: [...nums.map(n => 'TRAIL ' + n),                                // top left, no frame;
+                          ...['WARM', 'HARD', 'TUBE', 'FOLD'].map(t => 'DRIVE ' + t)] },  // shift: the overdrive (1.2)
   { x: PD[0] + 4, y: PD[1], words: ['SPEED', ...nums.map(n => 'TONE ' + n)] },      // tone green's, flux white's
   { x: PS[0] + 4, y: PS[1], words: ['YEAR', ...nums.map(n => 'SPREAD ' + n)] },     // (the owner, 2026-10-26)
   { x: PF[0] + 4, y: PF[1], words: ['POWER', ...nums.map(n => 'FLUX ' + n)] },

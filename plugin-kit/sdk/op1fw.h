@@ -1066,4 +1066,97 @@ extern fw_string_assign_t fw_string_assign;
 typedef void fw_os_free_t(void *p);
 extern fw_os_free_t fw_os_free;
 
+/* fw_frame_sender: the display's frame sender, 0x01A2FB68.  F0084 (high), F0220 (high).
+ * Called by the panel's vsync handler 0xFFA057B0 (IVG13) at every second PG3 edge with 1
+ * (loaded at 0xFFA05836): once the render thread's post [0x018B644C] is set, swaps buffers and
+ * posts it; then, if the ready byte B[0x018B64AD] is set (or fewer than 2 frames ever
+ * started), starts a frame from [0x018B64B0]. Through the whole boot, from the logo's first
+ * frames (0.6 G cycles), every 2 vsyncs. Interrupt context. */
+typedef void fw_frame_sender_t(int vsync);
+extern fw_frame_sender_t fw_frame_sender;
+
+/* fw_frame_ready: the next frame named and marked ready, 0x01A366EC.  F0084 (high), F0220
+ * (high).  [0x018B64B0] = frame, B[0x018B64AD] = 1: the vsync's next sender call starts its
+ * DMA (0x4A codec boards). The render thread's after each render; before the render thread
+ * runs, a frame put there is sent once. */
+typedef void fw_frame_ready_t(unsigned short *frame);
+extern fw_frame_ready_t fw_frame_ready;
+
+/* fw_fat_check: the USB disk's check, 0x01996F38.  F0157 (high).  The wipe of every unknown
+ * file, the tracks' and sides' check, the fragment count and the defragmenter; OP_Main at boot
+ * (0x019F0354, after the sync 0x01996530) and at disk mode's no-change end (0x0199758E).
+ * Thread context, FatFs mounted. */
+typedef void fw_fat_check_t(void);
+extern fw_fat_check_t fw_fat_check;
+
+/* fw_bg_register: the background saver's base constructor, 0x0193F010.  F0287 (high), F0292
+ * (high).  Writes the base table 0x0190F284 at obj+4 (its save the pure-virtual stub), clears
+ * obj's dirty and pending bytes and adds obj to the saver's vector: write the object's own
+ * table after it. Thread context. */
+typedef void fw_bg_register_t(void *obj);
+extern fw_bg_register_t fw_bg_register;
+
+/* fw_knob_touched: an encoder's touched flag, 0x019D7E78.  F0299 (high).  B[0x01DD7F74 +
+ * encoder] = 1 (0 blue to 3 orange; asserts outside): the OS's own knob path sets it, and
+ * stock effect screens fade a value in while it is set (delay's INPUT, read through 0x01A3BC44
+ * -> 0x019D7C84); 0x019D7ED0 clears all four. KeyHandler. */
+typedef void fw_knob_touched_t(int encoder);
+extern fw_knob_touched_t fw_knob_touched;
+
+/* fw_slot_sampler: a synth slot's sampler object, 0x01A51DE8.  F0293 (high).  Returns the
+ * slot's 8-byte object {+0 SampleBuffer *, +4 the rate from base_freq}; asserts
+ * SynthSampler.cpp:165 outside 0-7. SampleBuffer +0 m_buffer (the sound from m_buffer[8]),
+ * +0x1038 m_length (264,608). */
+typedef void *fw_slot_sampler_t(int slot);
+extern fw_slot_sampler_t fw_slot_sampler;
+
+/* fw_string_equals: std::string == a C string, 0x01A01094.  F0293 (high), F0294 (high).  1
+ * when the OS's std::string equals lit, else 0 (the start's sampler test at 0x01A01844,
+ * samples.hooks). */
+typedef int fw_string_equals_t(const void *s, const char *lit);
+extern fw_string_equals_t fw_string_equals;
+
+/* fw_type_is_sampler: a preset type is sampler, 0x01940770.  F0293 (high), F0294 (high).  1
+ * when the OS's std::string equals sampler; the browse and revert job's two tests (0x0194083A
+ * load, 0x019408DE copy). */
+typedef int fw_type_is_sampler_t(const void *type);
+extern fw_type_is_sampler_t fw_type_is_sampler;
+
+/* fw_synth_sample_load: a synth slot's sample from a file, 0x0199FCE4.  F0294 (high).  path:
+ * the OS's std::string (e.g. /yaffs2//user/audio/synth/synth_N.raw); 0x01A51DE8(slot)'s
+ * SampleBuffer reads it (0x01A348E8: the file, the rest zero-filled, the peaks rebuilt).
+ * Called by the start (0x01A01920), the browse job (0x01940A42) and the sample column
+ * (0x0194017A); 10-13 M cycles. */
+typedef void fw_synth_sample_load_t(int slot, const void *path);
+extern fw_synth_sample_load_t fw_synth_sample_load;
+
+/* fw_sampler_set: the sampling's finish: the slot a fresh sampler, 0x01A02A46.  F0297 (high).
+ * 0x01A00850 on the slot's object (0x01DDD7E8 + 0x38 x slot): type sampler, name user, knobs
+ * [0, 0, end, end, 12000, 0, 0, 0x2D3F], base_freq, octave 0, the adsr's defaults,
+ * synth_version 2; applied, its row written. end: the recorded end as a fraction of the buffer
+ * (0-32767). Called by the finish 0x019DEE1C at 0x019DEEF2 (samples.hooks); KeyHandler. */
+typedef void fw_sampler_set_t(int slot, float base_freq, int end);
+extern fw_sampler_set_t fw_sampler_set;
+
+/* fw_disk_string_equals: std::string == a C string (the USB disk's), 0x0199D498.  F0295
+ * (high).  1 when the OS's std::string equals lit, else 0; the disk mode's export (0x0199DC0E)
+ * and import (0x0199F52A) ask it whether a preset is a sampler's (samples.hooks). */
+typedef int fw_disk_string_equals_t(const void *s, const char *lit);
+extern fw_disk_string_equals_t fw_disk_string_equals;
+
+/* fw_list_child: the browser list's add into a folder, 0x01A185F4.  F0182 (high), F0300
+ * (high).  folder, label: std::strings (the OS's layout, F0187; the list keeps copies). Finds
+ * the entry labelled folder (made on first use, id -1: a folder row with a column) and adds
+ * {label, id} to its children; the engine list's sampler column (0x01A025B2: folder sampler,
+ * label the preset's name, id minus its index) and Opus's sample engines' columns. */
+typedef void fw_list_child_t(void *list, const void *folder, const void *label, int id);
+extern fw_list_child_t fw_list_child;
+
+/* fw_file_copy: a file copied, 0x0199FD24.  F0294 (high), F0295 (high).  dst, src: std::string
+ * paths; src opened first (read only). Hold-to-save's preset .raw from synth_N.raw
+ * (0x019AD4D2), the browse job's synth_N.raw from the preset's .raw (0x01940950), the sample
+ * column's (0x01940250). */
+typedef void fw_file_copy_t(const void *dst, const void *src);
+extern fw_file_copy_t fw_file_copy;
+
 #endif
