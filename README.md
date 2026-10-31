@@ -105,8 +105,9 @@ thread on op-forums. Where ideas came from: [CREDITS.md](CREDITS.md).
 
 What's in this repository (the docs and the plugin kit) is [GPL-3.0](LICENSE): use it, change it and share it,
 and what you build on it stays open too. The plugins in the releases are © LizardMan, free to use and share. Their
-source is not published yet, apart from the kit's four examples. dx contains code under the Apache License 2.0
-(its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all
+source is not published yet, apart from the kit's four examples. The source of the core and the other plugins will
+be published once it's properly put together. There's no date yet, but it isn't meant to stay closed. dx contains
+code under the Apache License 2.0 (its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all
 rights reserved: please don't share them, link to the website instead.
 
 Opus is an independent project, not affiliated with or endorsed by Teenage Engineering. OP-1 is a trademark of
