@@ -1,0 +1,26 @@
+# displayname808.castle: a drone engine that sustains for ever. A note fades in and keeps sounding after the key goes
+# up; the next note crossfades to a new drone; the orange push on T1 turns drone mode on and off (off: notes sound while
+# held). Blue detune, green drift, white crackle, orange heat. T1 is the castle: water off the platform, leaves falling
+# and piling, flicker and lightning, flames; its flag flies in drone mode.
+# 0.2.0: the castle page; the Lode port's oscillator and detune.
+# 0.3.0: drone mode on and off (the orange push, kept in the sound); the scene a third bigger and centred, no values.
+# 0.3.1: the same note again takes over its sounding voice (was a second voice crossfading for 3 s: twice the CPU,
+# LizardMan's find); the sine table in fast memory.
+# 0.3.2: faster, the same sound bit for bit: a steady drone's block 42,400 -> 33,500 cycles, the page 108,000 -> 20,000
+# cycles a frame at rest and 710,000 -> 273,000 with everything up (the Blackfin simulator).
+# 0.3.3: at most two voices fading: in drone mode a drone older than the one being crossfaded from goes in 0.15 s;
+# out of it the newest three notes' tails keep 3 s, older ones go in 0.15 s.
+# 0.3.4: Castle's own cost measured on the device, shown on T1 while shift is held; the sine pairs in the audio pool
+# when fast memory is gone (core 2.8).
+# 0.3.5: the voice a third faster, the same sound sample for sample (33,700 -> 22,100 cycles a block in the Blackfin
+# simulator): the saws in Blackfin assembly (castle_saw.S: a hardware loop, the dual multiply, truncating fractional
+# multiplies, EXTRACT, loads issued beside arithmetic), the filter, heat, crackle and level a stage at a time over the
+# block, the soft clip without branches; the block's work buffer beside the sine pairs in fast memory.
+opmod     1
+id        displayname808.castle
+name      Castle
+author    displayname808
+version   0.3.5
+core      2.8
+adds      engine castle
+uses      orange_push noshift synth t1 modal "drone mode on or off"
