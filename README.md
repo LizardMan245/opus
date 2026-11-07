@@ -19,7 +19,8 @@ Hundekraft's synths, effects and sequencers on Opus.
   [Releases](https://github.com/LizardMan245/opus/releases).
 - **Your own plugins:** the [plugin kit](plugin-kit/) (GPL-3.0, with two additional terms: see Licence).
 
-**Opus 1** (1.0.1) stays on the site as legacy, one pack built and tested together: https://opus-op1.pages.dev/opus1/
+**Opus 1** (1.0.1) is deprecated: its page stays on the site as legacy, but going back to it from Opus 2 isn't
+supported. https://opus-op1.pages.dev/opus1/
 
 [Report a bug](https://github.com/LizardMan245/opus/issues/new?template=bug.yml) · [Ideas and questions](https://github.com/LizardMan245/opus/discussions) ·
 [Releases](https://github.com/LizardMan245/opus/releases)
@@ -28,16 +29,19 @@ Hundekraft's synths, effects and sequencers on Opus.
 
 Opus is built so you can try it without risk and leave without losing anything.
 
-- **Coming from stock, Opus 1, op1r or Hundekraft:** your sounds, presets and tape stay. Opus 1's sounds play with
-  the starter pack in the mods folder. op1r's and Hundekraft's synths, effects and sequencers play with the bridge.
-  At the first start with beta 4, your saved presets move into files on the USB disk.
+- **Coming from stock or Opus 1:** your sounds, presets and tape stay. Opus 1's sounds play with the starter pack in
+  the mods folder. At the first start with beta 4, your saved presets move into files on the USB disk.
+- **Coming from op1r or Hundekraft:** to try Opus out, install it over them: your sounds, presets and tape stay, and so
+  do their plugin files. To switch for good, start clean: back up the disk, factory reset (te-boot's 7, which leaves
+  their plugin files), install Opus 2 and copy back the presets you want
+  ([the steps](https://opus-op1.pages.dev/#from-other)). Either way, their synths, effects and sequencers play with
+  the bridge.
 - **Your presets are files:** the `.aif` files in the disk's synth and drum folders. Add, change or remove them on the
   computer, and they're there as the OP-1 leaves disk mode.
 - **A plugin removed or switched off:** a sound that needs it is kept exactly as it is. Its engine's, effect's, LFO's
   or sequencer's page says what's missing and which plugin it needs, and it plays again when the plugin comes back.
 - **Leaving:** the cleaner (Opus's menu, system) makes your data ready for stock, puts your preset files back into
-  the database, and keeps a copy of everything it changes. Install Opus again and it all comes back. Going back to
-  Opus 1 needs no cleaner.
+  the database, and keeps a copy of everything it changes. Install Opus again and it all comes back.
 - **The way back is always there:** Opus never changes te-boot, the OP-1's own updater and recovery.
 
 ## How Opus 2 works
@@ -52,8 +56,9 @@ Opus is built so you can try it without risk and leave without losing anything.
 - **Clashes are refused, not forced.** A place in the firmware holds one plugin. When two plugins want the same place
   or the same keys, the one later by file name is refused, and the mods list says which plugin has them.
 - **Costs up front.** The mods list shows each plugin's memory and CPU. Every plugin has a CPU budget in the audio
-  block, and its worst block is measured before release. One that uses far more than it should is switched off, and
-  one that crashes the OP-1 is left out at the next start.
+  block, and its worst block is measured before release. When the audio breaks up, the heaviest plugin is switched
+  off until the next start (a few clicks only bring up the audio warning), and one that crashes the OP-1 is left out
+  at the next start.
 - **Your sounds stay.** Every preset saved with Opus 1 or 2 names the plugins it needs, by their IDs.
 
 These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/design.md](docs/design.md) and
