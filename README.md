@@ -7,14 +7,17 @@ A hobby project, built in free time and at its own pace. Help is always welcome,
 **Opus 2** is out as a beta: not a bigger pack, but a plugin manager for the OP-1. Its small core loads plugins,
 `.opmod` files you copy into a mods folder on the OP-1's disk. Add one, remove one, swap them, no reflashing. The
 starter pack has all of Opus 1's features as plugins, plus dx (a DX7 voice player for your own `.syx` banks),
-outatime (a time-travel synth engine), iter (the OP-1's own hidden engine), a trigger guard for worn keys and a
-Halloween colour theme. The bridge, an alpha, runs op1r's and Hundekraft's synths, effects and sequencers on Opus.
+outatime (a time-travel synth engine), iter (the OP-1's own hidden engine), a trigger guard for worn keys, a
+Halloween colour theme, and new in beta 4 an LFO matrix, SIM (a drum engine whose page is a physics box), the OP-1's
+own help screen back, endless latch and preset tools (overwrite, rename and delete). Beside the pack: the monitor,
+which shows what the OP-1 and every plugin cost while you hold FN, and the bridge, an alpha, which runs op1r's and
+Hundekraft's synths, effects and sequencers on Opus.
 
 - **The core:** make the update from your own stock firmware with the patcher at
   **https://opus-op1.pages.dev/patcher/**. It runs in your browser and nothing is uploaded.
-- **The plugins:** the starter pack, each plugin on its own and the bridge are in
+- **The plugins:** the starter pack, each plugin on its own, the monitor and the bridge are in
   [Releases](https://github.com/LizardMan245/opus/releases).
-- **Your own plugins:** the [plugin kit](plugin-kit/) (GPL-3.0).
+- **Your own plugins:** the [plugin kit](plugin-kit/) (GPL-3.0, with two additional terms: see Licence).
 
 **Opus 1** (1.0.1) stays on the site as legacy, one pack built and tested together: https://opus-op1.pages.dev/opus1/
 
@@ -27,10 +30,14 @@ Opus is built so you can try it without risk and leave without losing anything.
 
 - **Coming from stock, Opus 1, op1r or Hundekraft:** your sounds, presets and tape stay. Opus 1's sounds play with
   the starter pack in the mods folder. op1r's and Hundekraft's synths, effects and sequencers play with the bridge.
-- **A plugin removed:** a sound that needs it is kept exactly as it is, shows "needs" with the plugin's name, and
-  plays again when the plugin comes back.
-- **Leaving:** the cleaner (Opus's menu, system) makes your data ready for stock or another mod, and keeps a copy of
-  everything it changes. Install Opus again and it all comes back. Going back to Opus 1 needs no cleaner.
+  At the first start with beta 4, your saved presets move into files on the USB disk.
+- **Your presets are files:** the `.aif` files in the disk's synth and drum folders. Add, change or remove them on the
+  computer, and they're there as the OP-1 leaves disk mode.
+- **A plugin removed or switched off:** a sound that needs it is kept exactly as it is. Its engine's, effect's, LFO's
+  or sequencer's page says what's missing and which plugin it needs, and it plays again when the plugin comes back.
+- **Leaving:** the cleaner (Opus's menu, system) makes your data ready for stock, puts your preset files back into
+  the database, and keeps a copy of everything it changes. Install Opus again and it all comes back. Going back to
+  Opus 1 needs no cleaner.
 - **The way back is always there:** Opus never changes te-boot, the OP-1's own updater and recovery.
 
 ## How Opus 2 works
@@ -61,6 +68,9 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.dx` | DX7 voice player |
 | `opus.outatime` | time-travel synth engine |
 | `opus.iter` | the OP-1's hidden synth engine |
+| `opus.sim` | drum engine whose page is a physics box (needs `opus.orbit3d`) |
+| `opus.orbit3d` | 3D line drawing library for plugin pages |
+| `opus.matrix` | LFO matrix |
 | `opus.bitcrush` | effect |
 | `opus.chorus` | effect |
 | `opus.plate` | reverb |
@@ -70,15 +80,17 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.bend` | pitch bend |
 | `opus.dice` | a random sound, and undo |
 | `opus.triggerguard` | a worn key that fires twice plays once |
+| `opus.endlesslatch` | endless sequencer recording that stays on |
 | `opus.tapeundo` | tape undo and redo |
 | `opus.zoom` | tape zoom |
 | `opus.playpause` | play as pause |
-| `opus.rename` | preset rename |
-| `opus.overwrite` | overwrite save |
+| `opus.presettools` | overwrite save, rename and delete for your presets |
+| `opus.stockhelp` | the OP-1's own help screen, on FN held |
 | `opus.splash` | your own start-up picture |
 | `opus.halloween` | colour theme |
 
-Outside the pack: `opus.bridge` (alpha), which runs op1r's `.op1p` and Hundekraft's `.knl` synths, effects and sequencers.
+Outside the pack: `opus.monitor`, which shows what the OP-1 and every plugin cost while you hold FN, and
+`opus.bridge` (alpha), which runs op1r's `.op1p` and Hundekraft's `.knl` synths, effects and sequencers.
 Versions, keys, CPU and memory for each: https://opus-op1.pages.dev
 
 The names and numbers that 246 mods share inside the firmware are kept in the
@@ -104,7 +116,8 @@ thread on op-forums. Where ideas came from: [CREDITS.md](CREDITS.md).
 ## Licence
 
 What's in this repository (the docs and the plugin kit) is [GPL-3.0](LICENSE): use it, change it and share it,
-and what you build on it stays open too. The plugins in the releases are © LizardMan, free to use and share. Their
+and what you build on it stays open too. The plugin kit adds two terms under the GPL's section 7: a modified version
+has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, free to use and share. Their
 source is not published yet, apart from the kit's four examples. The source of the core and the other plugins will
 be published once it's properly put together. There's no date yet, but it isn't meant to stay closed. dx contains
 code under the Apache License 2.0 (its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all

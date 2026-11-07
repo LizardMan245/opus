@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: Opus version and build
-      description: Open Opus's menu (hold synth + drum + tape + mixer) and hold help, e.g. "opus 2, build 1" or "opus 1, build 90".
+      description: e.g. "opus 2, build 6" or "opus 1, build 90". From beta 4 it's at the top of logs/load_report.txt on the disk; before, open Opus's menu (hold synth + drum + tape + mixer) and hold help.
     validations:
       required: true
   - type: dropdown
@@ -49,7 +49,12 @@ body:
       label: A photo of the screen
       description: If the OP-1 stopped at a black screen with white text, a photo of it helps most. Drag it in here.
   - type: textarea
+    id: loadreport
+    attributes:
+      label: The load report
+      description: Opus 2 beta 4 or newer. Put the OP-1 in disk mode, open the logs folder and drag load_report.txt in here. It says which build and OP-1 you have and what happened to each plugin file.
+  - type: textarea
     id: crashlog
     attributes:
       label: The crash log
-      description: If the OP-1 crashed (Opus 2 beta 3.2 or newer), put it in disk mode, open the crash folder and drag the newest N.txt in here.
+      description: If the OP-1 crashed, put it in disk mode and drag the newest N.txt in here, from the logs folder (beta 4 or newer) or the crash folder (beta 3.2).
