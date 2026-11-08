@@ -1,7 +1,9 @@
 /* Opus 2's plugin API: the core's names a plugin calls (opus_*). The
  * firmware's functions by name are in op1fw.h (the deep names, written by `op1mod plugin`); a library's
  * exports in the library's own header. Every name is an import: the core gives its address when it loads
- * the plugin, and refuses a plugin naming one it does not have ("needs opus_on_post_fx"). */
+ * the plugin, and refuses a plugin naming one it does not have ("needs opus_on_post_fx").
+ * Licence: GPL-3.0, with two additional terms (section 7 c and e; the kit's README, Licence): a modified version has
+ * to be marked as different from the original, and it can't use the original plugin's name. */
 #ifndef OPUS_PLUGIN_H
 #define OPUS_PLUGIN_H
 
@@ -33,10 +35,22 @@ int opus_key_post(int key, int pressed);
  * OS; 1 drops it (it never happened: no one sees it). For a plugin that cleans the keys themselves (the trigger guard);
  * a filter that holds an event back and sends it later with opus_key_post sees it come back here. KeyHandler. */
 void opus_on_key_filter(struct opl_self *self, int (*fn)(int key, int pressed));
+/* A key filter that comes before every other plugin's (core 2.25): for a plugin that cleans the keys for everyone (the
+ * trigger guard), so every other filter and handler sees the cleaned keys, each event once, the cleaner's late ones
+ * included. Several such run in their plugins' load order, all before the plain filters. KeyHandler. */
+void opus_on_key_filter_first(struct opl_self *self, int (*fn)(int key, int pressed));
+/* A timer in the KeyHandler thread (core 2.14): fn once, ms or a little more from now (the next audio block's check,
+ * then the key queue), where key handlers run, so it may do what they do (fw_ui_dispatch, opus_key_post). One a
+ * plugin: a call replaces the one waiting; ms 0 cancels. For a gesture that waits (a key held a moment). */
+void opus_key_timer(struct opl_self *self, unsigned ms, void (*fn)(void));
 /* FN (the OP-1's help key, the core's since 2026-10-17): 1 while held. A key handler also sees it as key 0; the OS
  * never does. A control with FN held is declared `uses INPUT fn ...` (nofn: without it). */
 int opus_fn_held(void);
 void opus_on_knob(struct opl_self *self, int (*fn)(int index, short *delta));
+/* A frame handler runs on each frame the core draws: while the screen stays the same, every 4th (still screens, since
+ * 2026-11-04: a frame not drawn calls no handler, its buffer already the panel's picture); a key, a turn, MIDI coming in
+ * or a frame that differs brings every frame back. So a handler's calls are no clock: time comes from the uptime or
+ * the cycles. The display thread. */
 void opus_on_frame(struct opl_self *self, void (*fn)(unsigned short *buf));
 /* Under the OS's screen (2026-10-23: Opus's drawing on the same layer as the stock effects): on the frame the OS
  * just cleared, before it draws its screen and its popups over it, with the
@@ -86,8 +100,11 @@ int opus_rename(const char *old_path, const char *new_path);
  * this plugin loads or not, so a power cut never leaves the change half done. The steps, a line each, the word and its
  * fields parted by a tab: `rename A B` (A to B when A is there and B is not; copied then removed when the rename is
  * refused), `copy A B` (B written whole from A when A is there), `unlink A` (when there), `sql S` (op1.db; no '%'),
- * then `end`; paths in /yaffs2/user/audio/ and /yaffs2/mod/ only. opus_journal_run: the steps done (all of them: the
- * change made), short of them when one failed (that one and the rest stay for the next start: the plugin may undo what
+ * then `end`; paths in /yaffs2/user/audio/ and /yaffs2/mod/ only. On the USB disk (2026-10-31, core 2.16), in /synth/
+ * and /drum/ only: `frename A B` (A to B when A is there and B is not: FAT renames over nothing, so `funlink B` first)
+ * and `funlink A` (when there; its read-only mark cleared first); they wait while the disk is not the OP-1's (at the
+ * start before the OS mounts it, in disk mode), the rest of the journal with them. opus_journal_run: the steps done
+ * (all of them: the change made), short of them when one failed (that one and the rest stay for the next start: the plugin may undo what
  * was done and call opus_journal_done instead), -1 when not taken (a step the core does not take, too long, the write
  * failed: nothing done). opus_journal only writes one down (what undoes the plugin's own work in progress, done with
  * opus_journal_done); a later one of the plugin's replaces it. OP_Main's thread (the file system). */
@@ -99,10 +116,16 @@ int opus_bgfile_idle(void);
 /* The synth's sound presets as the browser lists them (presets.c: the core's own array, 0x38 bytes an
  * entry), for a plugin that renames or overwrites a preset. */
 extern unsigned char opus_presets[];
+extern unsigned char opus_drums[];         /* the drum kits', the same (core 2.19: moved from stock's 0x01DE20F8) */
 /* Events the menu and the save have (opus.h's): the start of each frame (the display thread, before the OS draws),
  * and OP_Main's hold-to-save pass: 1 takes the pass (the OS's does not run), 0 leaves it the OS's. */
 void opus_on_frame_begin(struct opl_self *self, void (*fn)(void));
 void opus_on_save_pass(struct opl_self *self, int (*fn)(void));
+/* How many of the last 8 frames came late (core 2.29): two display periods (70 ms) or more after the one before, as
+ * the OS's frames come when a frame's drawing takes longer than one period (the audio comes first: under a heavy sound
+ * the drawing gets what it leaves, and the rate halves at once). An animated page may draw lighter while they do, and
+ * back once they come on time again. 0-8. */
+int opus_frames_late(void);
 /* The flash's bytes a plugin may still write (room.c: the free space less what the tape, the sounds and a
  * margin will need); a plugin keeps its files inside it, as tape undo's scratch does (2026-10-21). */
 int opus_flash_headroom(void);
@@ -149,10 +172,28 @@ void *opus_alloc_audio(struct opl_self *self, unsigned bytes);
  * also runs in the audio interrupt. Worth it for what an audio block touches every time (a short delay line, a
  * block's settings): each 32-byte line of SDRAM costs about 107 cycles a block on the device. */
 void *opus_fast(struct opl_self *self, unsigned bytes);
+/* Fast memory on lease (core 2.21, 2026-11-01): the fast memory goes to what plays.
+ * A part takes a lease from opl_init with its own copy in SDRAM (slow: bytes, 4-byte aligned, always valid), and each
+ * audio block it works asks where its bytes are now (opus_fast_use: the fast copy or its own). The core gives a lease
+ * in use fast memory when there is room, or takes it from a lease of a plugin of lower priority (the manifest's
+ * `priority high|normal|low`), and takes it back from a lease unused for about two seconds; moves happen only at an
+ * audio block's end. kind: what a move keeps. Never keep the pointer past the block. */
+#define OPUS_FAST_SCRATCH 0                /* nothing kept: the part fills its bytes every block */
+#define OPUS_FAST_CONST 1                  /* set once in its own copy, never written after: copied in */
+#define OPUS_FAST_STATE 2                  /* kept: copied in, and back out when it goes */
+struct opus_fast_lease;
+struct opus_fast_lease *opus_fast_lease(struct opl_self *self, unsigned bytes, int kind, void *slow);   /* 0 none */
+void *opus_fast_use(struct opus_fast_lease *l);   /* the audio thread, each block it works: where its bytes are */
 
 /* Audio work the OS runs for a plugin, outside the core's events (an effect in the OS's effect slot): its
  * cycles, charged to the plugin for the mods list (IVG11 or any thread). */
 void opus_cpu_charge(struct opl_self *self, unsigned cycles);
+
+/* The core's figures (core 2.28): the CPU, memory, threads and drawing of the whole OP-1 and of every plugin, as one
+ * record (opus_stats.h has its layout) copied into buf. The core makes a fresh record about four times a second while
+ * it is asked for (any thread; asking costs a copy), none otherwise: the first call after a quiet while finds the last
+ * one made, or none. -> its bytes; 0 none made yet (ask again in a moment); -(its bytes) when max is too small. */
+int opus_stats(void *buf, unsigned max);
 
 /* A line in the boot log (the dev port's log). */
 void opus_log(struct opl_self *self, const char *text);
@@ -193,6 +234,28 @@ struct opus_folder {
 };
 #endif
 int opus_on_folder(struct opl_self *self, const struct opus_folder *f);
+/* Inside take, before refusing (core 2.20): why, shown as a notice with the file's name ("splash/me.png: not a png");
+ * short (the line holds about 48 characters with the name), a string that stays (a literal). */
+void opus_folder_refused(const char *why);
+/* (core 2.32) The folder adopts files of an ending the computer leaves in /mods itself: at disk mode's end the core moves
+ * them into this folder on the disk, and take gets them as any of its files, with a notice saying so ("gin.op1p: moved
+ * to mods/bridge") and the load report's line. Another firmware's plugin files for a bridge, banks for a synth. The
+ * ending: a dot and 1-6 letters or digits (".syx"), not .opmod, not one another loaded plugin's folder adopts; eight
+ * in all. It counts while the plugin is loaded; with the plugin missing or off, such a file is refused as before.
+ * Your own registered folder only (opus_on_folder first). 1, or 0 refused (the boot log says why). From opl_init. */
+int opus_folder_adopt(struct opl_self *self, const struct opus_folder *f, const char *ending);
+
+/* (core 2.33) The boot picture: shown while the OP-1 starts, in place of TE's logo, from the next start on and while
+ * this plugin is installed (the start comes before any plugin runs). picture: a file in your own folder in the core's
+ * form ("OPSP" as a word, then width | height << 16, then the rows of RGB565 pixels, at most the panel's rows wide and
+ * 168/188 of its columns high: opus_panel_size); name: a text file whose first line is drawn below it, or 0. picture
+ * 0: none (when the picture shown is yours). The core writes its record only when it changes. From opl_init, or a
+ * folder's take or changed. 1, or 0 (a path of 96 characters or more). */
+int opus_boot_picture(struct opl_self *self, const char *picture, const char *name);
+/* This OP-1's panel (core 2.20; three types: 376 x 188, 320 x 156, 400 x 200): its rows, the frame's x, and its
+ * columns into *cols when given; 0 on boards whose boot picture Opus does not draw on. A frame's pixel (x, y) is the
+ * halfword at frame + 256 (rows - 1 - x) + y; the OS's 320 x 160 drawing is scaled by rows / 320. */
+int opus_panel_size(int *cols);
 /* Reading a file yourself (fw_yaffs_read, op1fw.h): read into a buffer aligned to 32 bytes (`static unsigned char
  * buf[N] __attribute__((aligned(32)))`): a read of a whole flash page into one at an odd address stopped the OP-1
  *. */
@@ -229,6 +292,8 @@ int opus_on_folder(struct opl_self *self, const struct opus_folder *f);
 #define OPUS_RED        OPUS_COLOR_ALERT
 #define OPUS_BLACK      OPUS_COLOR_BACK
 void opus_on_panel(struct opl_self *self, void (*draw)(void));
+/* The panel's turns: green (encoder 1) only since core 2.23; white is the list's order and orange the plugin's switch
+ * (plan point 55). Before it, white and orange came too (2, 3). */
 void opus_on_panel_knob(struct opl_self *self, int (*knob)(int encoder, int steps));
 /* Text in the OP-1's font: slot 0-7, each with one place and size (its first), the colour and text each call. */
 void opus_panel_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
@@ -241,6 +306,51 @@ void opus_panel_bar(int x0, int y0, int x1, int y1, unsigned value, unsigned max
  * characters and the 0) and returns 1, or returns 0 past the last row; it runs in the KeyHandler thread as the page
  * opens, so keep it short. The page holds 40 rows in all, the manifest's settings first. */
 void opus_on_settings_rows(struct opl_self *self, int (*fn)(int i, const char **label, char *value));
+
+/* A module's own page (core 2.31, 2026-11-07): the same in every module type that has one,
+ * effects, synth and drum engines, LFO types and sequencers. Each type's struct ends with the same optional members:
+ *     const char *svg;
+ *     void (*screen_init)(void *scr);
+ *     void (*screen_draw)(void *scr, int dt);
+ *     int (*page_key)(struct opus_page *pg, int key, int pressed);
+ *     int (*page_turn)(struct opus_page *pg, int encoder, int detents);
+ * svg: its own OS screen on its page (an effect's, an engine's T1, a drum engine's T1, an LFO type's T4, a sequencer's):
+ * the file whose front is the screen's SVG, a full path, checked as art is and loaded once at the start; screen_init(scr)
+ * once after that; screen_draw(scr, dt) every frame it shows (the display thread): it draws the document itself
+ * (fw_screen_draw) and what moves, and asks opus_page_now what to show. Without one, or with its file refused (the boot
+ * log says why), the type's drawn page shows (an effect's view, an engine's or LFO type's page). page_key: a key on any of
+ * its pages (FN + an encoder's push passes it by); page_turn: a turn there (0 blue .. 3 orange), in detents (0 when less
+ * than one). Both in the KeyHandler thread, both told what the page shows; change pg->par in place and return 1: the core
+ * keeps the change and saves it with the sound, in whichever slot it is (an effect's params, an engine's knobs, the drum
+ * key's numbers, an LFO type's settings); return 0 to leave the event as it was going (the OS's, or the type's older key
+ * and turn). When set, they come instead of the type's older key and turn. Since 2.31 a turn's or a key's page call is
+ * the same for every type; the older forms stay for the plugins built before. */
+#define OPUS_PAGE_EFFECT 0
+#define OPUS_PAGE_ENGINE 1                 /* a synth engine's T1, T2 or T4 */
+#define OPUS_PAGE_DRUM  2                  /* a drum engine's T1 */
+#define OPUS_PAGE_LFO   3                  /* an LFO type's T4 */
+#define OPUS_PAGE_SEQ   4                  /* a sequencer's page (the sequencer key) */
+struct opus_page {
+    short kind;                            /* OPUS_PAGE_* */
+    short t;                               /* the T key whose page it is, 1-4; a sequencer's 0 */
+    short where;                           /* 0 synth, 1 drum, 2 master */
+    short slot;                            /* the sound slot, 0-7 (the master's: 0) */
+    short on;                              /* an effect's or an LFO's on; 1 for the others */
+    short n;                               /* values in par: 8, an LFO type's nparams, or 0 (a sequencer: its own data) */
+    short key;                             /* a drum engine's current key (0-23: the one T1's encoders turn), else -1 */
+    short live[8];                         /* par's first eight as the sound hears them now (an LFO's moves in), else
+                                              as stored */
+    volatile short *par;                   /* what the page edits: an effect's params, an engine's knobs, the drum key's
+                                              numbers, an LFO type's settings; 0 when n is 0 */
+    void *inst;                            /* the instance: an effect's struct opus_fx *, an LFO's struct opus_lfo *; 0
+                                              for the others, and when nothing runs it now (touch its state only) */
+    const void *module;                    /* the struct the plugin registered (its opus_effect, opus_engine,
+                                              opus_lfo_type or opus_sequencer): compare with yours */
+};
+/* What a module's page shows now: 1 and pg filled while a plugin's module's page shows (an effect page of any type, the
+ * OS's own included: then module and inst are 0), else 0. Any thread but the audio. It never says whether an effect is a
+ * sound's first or a manager's (Fx overdrive's second): a type does not know who runs it. */
+int opus_page_now(struct opus_page *pg);
 
 /* Effects:the core's effect service (effects.c). An effect is a type in the OS's own effect list (synth, drum
  * and the master each choose it) with its own page; a sound naming it loads with it while its plugin is there,
@@ -266,6 +376,11 @@ struct opus_need {                         /* what one instance needs, for mono 
     unsigned state;                        /* bytes in SDRAM, cleared: the instance's variables */
     unsigned bulk;                         /* bytes in SDRAM, cleared: delay lines, a reverb's tank */
     unsigned fast;                         /* bytes wanted in fast memory (L1, opus_fast's), else SDRAM */
+    unsigned fast_moves;                   /* core 2.21: 0 its fast part stays where it was made (an older type: it
+                                              may keep the pointer); OPUS_FAST_SCRATCH + 1 or OPUS_FAST_STATE + 1: the
+                                              type reads fx->fast at every call, and its fast part goes where the
+                                              playing instances need it most (scratch: nothing kept; state: kept;
+                                              OPUS_FAST_CONST + 1 is taken as OPUS_FAST_STATE + 1) */
 };
 /* An instance as the type's calls get it. The core's synth and drum slots never run in one block and share
  * bulk and fast memory (a type keeps in state whatever tells it where it is in them: a write position). */
@@ -291,13 +406,29 @@ struct opus_effect {
      * own shift behaviour (fine steps). Its turn then goes on with no movement: the OS changes nothing but still
      * saves the sound's eight params. KeyHandler thread. 0 for none. */
     int (*shift_knob)(short *par, int encoder, int detents);
+    /* From here on (2026-11-07, core 2.31): its own page, as every module type's (opus_page above). On an effect's page
+     * pg->par is the page's eight params (the sound's, or a manager's for its extra slot) and pg->inst the instance the
+     * page shows. A turn with shift held goes to shift_knob when it takes it; page_turn is not called while the effect is
+     * off. Keep whatever a sound should recall in its params, and nothing of an instance in statics: the same type can be
+     * a sound's effect and its second at once, each page with its own params and instance. The core takes a struct from
+     * version 2 (ending at shift_knob) up. */
+    const char *svg;
+    void (*screen_init)(void *scr);
+    void (*screen_draw)(void *scr, int dt);
+    int (*page_key)(struct opus_page *pg, int key, int pressed);
+    int (*page_turn)(struct opus_page *pg, int encoder, int detents);
+    /* core 2.33, optional: other names this type answers to, separated by spaces: names it had before, or the form an
+     * older Opus wrote it in ("opus1:8": Opus 1's effect number 8). The core keeps no list of them (R61). */
+    const char *aliases;
 };
 
 /* Registers an effect type (from opl_init) -> its type (8-15), or < 0: a bad struct or no room (-1; 8 types in all),
  * no pool for the core's slots' instances (-2), no row (-3), the service could not start (-4: a plugin loaded before
  * holds one of its places; the boot log names it). The core's slots' instances (synth and drum sharing bulk and fast,
- * the master) are made now from the plugin's pool, fast memory first to them; their process calls are timed and
- * charged to the plugin. (Version 1, opus_effect_add with a state size and init(state, pos), until 2026-10-23.) */
+ * the master) are made now, their state from the plugin's pool; their bulk has a home of its own and, while the type
+ * is a sound's effect at that slot, is lent memory the display does not slow, given back when another effect takes
+ * the slot (by the plugin's priority: high may take what normal and low leave). Each init gets the bulk where it is
+ * now: take pointers into it at init, not before. Their process calls are timed and charged to the plugin. (Version 1, opus_effect_add with a state size and init(state, pos), until 2026-10-23.) */
 int opus_effect_register(struct opl_self *self, const struct opus_effect *e);
 
 /* Another firmware's effect (2026-10-26, core 2.6: the op1r bridge), carried in the OS's filter type (5) by a mark in
@@ -308,7 +439,8 @@ int opus_effect_register(struct opl_self *self, const struct opus_effect *e);
  * charged); render_stereo(2, l, r, par) the master's, or 0 (the master then runs it on the mix's middle and adds
  * back what it changed). Its own OS screen (svg, screen_init, screen_draw: as an engine's) in the filter's screen slot
  * while its page shows; key(pos, key, pressed) for the pushes 0x3B-0x3E and turn(pos, par, encoder, detents) on its
- * page (1 takes it; par the page's params, written in place). Not a type managers run (Fx overdrive's are the 16). */
+ * page (1 takes it; par the page's params, written in place). Not a type managers run (Fx overdrive's are the 16): for
+ * a plugin's own effect with its own screen, pushes and turns, a type with svg, page_key and page_turn (core 2.31). */
 struct opus_hosted_effect {
     unsigned size;
     const char *name;
@@ -327,6 +459,50 @@ struct opus_hosted_effect {
  * start (-4). From opl_init. */
 int opus_effect_host(struct opl_self *self, const struct opus_hosted_effect *f);
 
+
+/* A plugin's own sound presets in the synth preset list (core 2.8), past the OS's op1.db rows: the browser and the
+ * engine list show them like the OS's. The OS rebuilds the list from op1.db at the start and after every save; each
+ * time, the source's list(kind) (kind 0, synth; kind 1 the drum kits, since core 2.19, after the OS's drum rows; OP_Main's
+ * thread, FatFs mounted and free at the start's) adds its entries of that kind again with opus_preset_add, which works
+ * only inside it and for that kind (a source with none of a kind adds nothing). An entry is light: its name and type ("sampler",
+ * "fm", ...) and its folder; tag is the plugin's own number for it. Since core 2.15 every plugin may be a source (up
+ * to eight, listed in the order they registered; a chosen entry is filled by the source that added it); a second call
+ * replaces the plugin's own struct. opus_preset_source: 0, or -1 a bad struct, -2 eight sources already, -3 a place
+ * is taken, -4 no room for the tags. opus_preset_add: the entry's index,
+ * or -1 not now or bad, -2 the list is full, -3 an op1.db preset of the user's has that folder and name (the OS's
+ * own export of it on the disk). opus_presets_relist: the entries again after the plugin's own list
+ * changed (disk mode's end), while no list is open. */
+struct opus_preset_source {
+    unsigned size;                         /* sizeof (struct opus_preset_source) */
+    void (*list)(int kind);
+    /* An entry chosen (the browser's load job, its BgFile thread; FatFs free there outside disk mode): its whole patch
+     * JSON into json (at most max bytes; -> its length, or <= 0: it cannot be loaded and nothing happens), and for
+     * a sampler its sound (the bytes of its SSND) written to raw_path, where the OS's job reads it. */
+    int (*fill)(unsigned tag, char *json, int max, const char *raw_path);
+};
+int opus_preset_source(struct opl_self *self, const struct opus_preset_source *s);
+int opus_preset_add(struct opl_self *self, int kind, const char *folder, const char *name, const char *type, unsigned tag);
+void opus_presets_relist(struct opl_self *self, int kind);
+/* The user's presets as files (core 2.17: the user's synth presets are files on the USB disk, /synth/FOLDER/NAME.aif,
+ * moved there from op1.db by the core): opus_preset_file says whether the synth preset array's entry at
+ * index is one of them (1) or an op1.db row (0: a factory preset, a row the mover left, another source's entry).
+ * opus_preset_overwrite writes synth slot slot's sound (its patch, a sampler's or a sample engine's sound) over the
+ * file preset at index, whole and through the core's journal: 1 done, -1 nothing changed. opus_preset_rename writes the
+ * file preset at index again as to (the patch's "name" too), removes the old file and, for slot >= 0, renames that
+ * synth slot's row, all in one journal: 1 done, -2 a file of that name in the folder, -1 nothing changed; the array's
+ * JSON stays the caller's to set. opus_presets_reload reads the presets again as after a save (kind 0 synth, 1 drum),
+ * the sources' entries with them (the OS's loader alone drops them). OP_Main's thread. */
+int opus_preset_file(int index);
+int opus_preset_overwrite(struct opl_self *self, int index, int slot);
+int opus_preset_rename(struct opl_self *self, int index, const char *to, int slot);
+int opus_preset_delete(struct opl_self *self, int index);   /* core 2.18: the file preset removed (journal), 1 done, -1 not */
+/* The drum kits as files (core 2.19: the user's drum kits are files too, /drum/FOLDER/NAME.aif): the
+ * same four for the drum kits' array (opus_drums) and the drum slots, a sampled kit's sound from drum_N.raw. */
+int opus_kit_file(int index);
+int opus_kit_overwrite(struct opl_self *self, int index, int slot);
+int opus_kit_rename(struct opl_self *self, int index, const char *to, int slot);
+int opus_kit_delete(struct opl_self *self, int index);
+void opus_presets_reload(int kind);
 
 /* Managers (core 2.2, 2026-10-25; the module model): any plugin may run
  * instances of any effect type (the OS's eight and every plugin's) wherever it wants, without the type knowing (Fx
@@ -452,8 +628,9 @@ struct opus_engine {
     int (*finished)(void *voice);
     /* From here on (2026-10-26, core 2.6: another firmware's engines, the op1r bridge). The "type" that firmware's
      * sounds of this engine carry (op1r's "fmbell"), or 0: such a sound loads as this engine (iter, its mark)
-     * instead of being refused. And the mark to claim, or 0 for the core's own: 0x5301-0x53FF only (op1r's and
-     * kennel's 0x5300 + order in knob 4), so that firmware's sounds find it. */
+     * instead of being refused. And the mark to claim, or 0 for the core's own: the mark sounds made elsewhere carry
+     * in knob 4, so they find this engine, in 0x5301-0x53FF (op1r's and kennel's 0x5300 + order) or, from core 2.33,
+     * 0x4F01-0x4FFF (an older Opus's: Opus 1's dimension 0x4F01, amp 0x4F02). The core keeps no list of them. */
     const char *type;
     int mark;
     /* Its own OS screen on T1 (2026-10-26, core 2.6), or 0: svg the file whose front is the screen's SVG (a full path:
@@ -463,6 +640,24 @@ struct opus_engine {
     const char *svg;
     void (*screen_init)(void *scr);
     void (*screen_draw)(void *scr, int dt);
+    /* From here on (2026-11-01, core 2.21). Its shift layer: the knob each encoder (blue, green, white, orange) turns
+     * with shift held, 5-7 (knob 4 is the core's mark), or -1 for none (a choice kept in its data, say), so an LFO
+     * type can move it (OPUS_LFO_ENGINE_SHIFT). An older plugin's: none. */
+    signed char shift_knobs[4];
+    /* From here on (2026-11-03, core 2.24: the drum, OPUS_ENGINE_DRUM). A new kit's numbers, its 24 keys' eight each
+     * (0: knobs on every key). A note with its key (on the drum 0-23, the key's numbers as knobs) and its velocity
+     * (1-127; the OP-1's keys give 127), called instead of note_on when set. The key's choke group (1-15, or 0 for
+     * none): a note in a group stops the busy voices of the other keys in it through choke (cut now: a few
+     * milliseconds' fade), as an open hi-hat by a closed one. 0 for any of them: none. */
+    const short (*keys)[8];
+    void (*note_key)(void *voice, const short *knobs, int key, int velocity);
+    int (*group)(const short *knobs, int key);
+    void (*choke)(void *voice);
+    /* From here on (2026-11-07, core 2.31): its pages' keys and turns, as every module type's (opus_page above): pg->t
+     * says T1, T2 or T4; pg->par the sound's knobs (knob 4 is the core's: a change to it is not kept), or on the drum the
+     * current key's eight numbers. svg, screen_init and screen_draw above are its T1 screen, on the drum's T1 too. */
+    int (*page_key)(struct opus_page *pg, int key, int pressed);
+    int (*page_turn)(struct opus_page *pg, int encoder, int detents);
 };
 /* The engine shapes the volume itself, its release and the velocity included (its T2 page). With finished, the OS's
  * envelope does not run for its voices (no cost; the gain stays at a held key's) and a let-go voice is freed when
@@ -485,6 +680,16 @@ struct opus_engine {
  * (the OS's save and the overwrite save), and sample into it (mic or shift + mic, a held note: the sound stays the
  * engine's). Its voices read it with opus_sample; the key it was sampled at with opus_sample_base. */
 #define OPUS_ENGINE_SAMPLE 8
+/* A drum engine (core 2.24, 2026-11-03; SIM): a row of the drum's engine list (shift + T1 in drum mode), never the
+ * synth's. Its kits are the OS's dbox kits (type "dbox": 24 keys of eight numbers, the member naming the engine), so
+ * the OS saves, loads, copies and turns them as dbox's: on T1 the four encoders turn the current key's numbers 0-3 and
+ * with shift 4-7 (number 0 -24320..24832, the others 0..32767), and the drum's LFO moves them. Twelve voices (state
+ * for twelve); note_key gets the key; render's knobs are the playing key's eight as the LFO left them, its pitch the
+ * voice's ratio x 65536 (65536 as played; the drum octave and a sequencer's transposition in it, 2^(semitones / 12):
+ * the endless sequencer transposes a drum pattern by the held key) since core 2.26, 0 (no pointer) before.
+ * finished is required: on the drum it is asked every block from the note on (a hit ends on its own), and a voice it
+ * frees renders no more until a note. Its page is the drum's T1 (page; T2 and T4 stay the OS's). */
+#define OPUS_ENGINE_DRUM 16
 
 /* Adds an engine (from opl_init) -> its mark (1-32767, the same on every OP-1: from the plugin's id and the
  * engine's name, or the one it claims), or < 0: a bad struct (-1; a claimed mark outside 0x5301-0x53FF; since core
@@ -494,6 +699,9 @@ int opus_engine_add(struct opl_self *self, const struct opus_engine *e);
 /* The current sound's knobs as its newest note's voice last heard them (the LFOs in) and 1 while a voice plays,
  * else the stored knobs and 0: for a page. */
 int opus_engine_live(short par[8]);
+/* The drum's current key (0-23: the last note key played, the one T1's encoders turn) and its eight numbers as the
+ * current kit stores them (core 2.24): for a drum engine's page. Any thread. */
+int opus_drum_key(short par[8]);
 /* The current sound's knobs for a page, and 1 when it is an engine's: since core 2.8 as opus_engine_live (the LFO in
  * while a note sounds), so every value a page shows follows the modulation as the stock screens' do; core 2.3-2.7 gave
  * the stored knobs. Any thread. */
@@ -510,6 +718,9 @@ int opus_engine_knob_set(int k, int value);
  * turn or key handler), 0 bytes removes it; 1, or 0 when the current sound is no engine's. The sound's name (as the
  * OS keeps it: the engine's name when chosen, a user preset's after the OS's save or a load), any thread. */
 #define OPUS_ENGINE_DATA 256
+/* Core 2.21: the engine keeps no pointer to a voice's state past a call (it uses the one each call gives), so the
+ * voices' states may move between fast memory and SDRAM between blocks (fast memory on lease, by priority). */
+#define OPUS_ENGINE_STATE_MOVES 512
 int opus_engine_data(void *buf, int max);
 int opus_engine_data_set(const void *buf, int n);
 int opus_engine_sound_name(char *buf, int max);
@@ -518,6 +729,7 @@ int opus_engine_sound_name(char *buf, int max);
  * 2-146). Only inside the page's draw call; colours by id. Text slots 0-31, each with one place and size (its first). */
 void opus_page_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
 void opus_page_text_right(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
+void opus_page_text_centre(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);   /* core 2.21: centred on x */
 void opus_page_fill(int x0, int y0, int x1, int y1, int colour);         /* a filled rectangle, inclusive */
 void opus_page_frame(int x0, int y0, int x1, int y1, int colour);        /* its outline, one pixel */
 void opus_page_line(int x0, int y0, int x1, int y1, int colour);         /* a unit wide, smoothed (2026-10-23) */
@@ -528,6 +740,10 @@ void opus_page_line(int x0, int y0, int x1, int y1, int colour);         /* a un
 void opus_page_stroke_line(int x0, int y0, int x1, int y1, int width, int colour);
 void opus_page_dot(int x, int y, int r, int filled, int colour);         /* a circle of radius r around (x, y), smoothed */
 void opus_page_bar(int x0, int y0, int x1, int y1, unsigned value, unsigned max, int colour);   /* lit from the left */
+/* Everything drawn so far at half brightness, as the OP-1's own help darkens the page before drawing over it (core
+ * 2.28): for an overlay over a page that goes on underneath. What is drawn after it stays bright. Its cost is about
+ * the OS's own dimming's (some hundreds of thousands of cycles a frame): only while the overlay shows. */
+void opus_page_dim(void);
 /* SVG art behind a page (page 0 T1, 1 T2, 3 T4): the file (a full path) is checked for what would stop the OP-1 in the
  * OS's parser (tools/op1mod/svgcheck.py says the same on the PC), loaded the first time the page shows, drawn once
  * and kept; the page's draw call then draws over it. Again after the file changed (its size); path 0: none any more.
@@ -539,7 +755,8 @@ int opus_page_art(struct opl_self *self, int page, const char *path);
  * (rev 2's 376, rev 1's 400, the FE's 320): smooth edges, widths, caps and joins as stock's. Places in the drawing's
  * units x 256 (x 0-81,920 across, y 0-40,960 down: finer than a pixel), kept to a margin around the drawing.
  * Colours by id, or OPUS_RGB(0xRRGGBB) for one of the plugin's own.
- * opus_page_path starts a path (the last one gone); moves start its subpaths; a line or curve with no move before
+ * opus_page_path starts a path (the last one gone); moves start its subpaths (each stroked as a shape of its own since
+ * 2026-11-04: until then a stroke joined a move to the point before it); a line or curve with no move before
  * starts at its own end. A stroke or a fill draws the path and keeps it (both may: the fill first). Up to
  * OPUS_PATH_POINTS points a path (a curve takes three); past that they are dropped. Width x 256 (pixels, below); colours by
  * id; alpha 0 (none) to 255 (opaque), blended over what is there. A stroke's width is the panel's pixels, not units (the
@@ -570,6 +787,89 @@ struct opus_clock {
     unsigned char month, day, hour, minute, second, weekday;
 };
 void opus_clock(struct opus_clock *c);
+/* The tempo service (core 2.21, 2026-11-01): the OP-1's tempo and where the music is, for a plugin
+ * that follows the beat (an LFO in note lengths, a tempo-synced delay). The sequencers' clock: 96 ticks a beat, paid
+ * out once an audio block (64 samples at 44.1 kHz, about 689 a second) whether the tape plays or not; tied to the
+ * tape in the tempo screen's tape modes, to a MIDI clock in its MIDI modes. ticks counts from the last reset (the play
+ * key, MIDI START: a beat's start), frac its fraction; step the ticks an audio block (16.16: measured when the clock
+ * is the tape's or a MIDI clock's). mbpm the set tempo, or under a MIDI clock its tempo measured over the last beats (0
+ * until two beats came). Any thread; size set by the caller. */
+struct opus_tempo {
+    unsigned size;                         /* sizeof (struct opus_tempo) */
+    unsigned mbpm;                         /* thousandths of a BPM */
+    unsigned ticks;                        /* 96 a beat, since the reset */
+    unsigned frac;                         /* 0-65535 of a tick */
+    unsigned step;                         /* ticks an audio block, 16.16 */
+    unsigned char external;                /* 1: following a MIDI clock */
+    unsigned char playing;                 /* the tape: 0 stopped, 1 recording, 2 playing */
+};
+void opus_tempo(struct opus_tempo *t);
+/* A cycle n ticks long (96 a beat, 24 a sixteenth, 384 a bar of four beats; 1-65535) at the music's position: its
+ * 32-bit phase (2^32 a cycle, 0 at each reset), and its phase's step an audio block. For an LFO locked to the beat. */
+unsigned opus_tempo_phase(unsigned n);
+unsigned opus_tempo_phase_step(unsigned n);
+
+/* LFO types (core 2.21, 2026-11-01): a plugin's LFO
+ * as a row of the OS's LFO list (shift + T4) and its page on T4. Its settings live in the sound as Opus's record
+ * (nparams numbers in the sound's "opus" member); the sound's own LFO fields say a stock MIDI LFO at rest, so a stock
+ * OP-1 or another firmware plays the sound with no LFO and never refuses it. While the sound is in its instrument's
+ * current slot and its LFO is on (T4), the audio thread calls the type: tick once an audio block (64 samples at
+ * 44.1 kHz), apply at each of the instrument's passes (synth: 1 then 0 for each sounding voice, then 2; drum: 3 for
+ * each sounding voice, then 4, then 5), where opus_lfo_move turns a target on the pass's copy of the sound (the OS's
+ * own turn, inside its ranges; the sound itself is never written), trigger at a note's start (for its voice, then for
+ * the instrument). A sound whose type's plugin is not loaded keeps its record and plays with no LFO. */
+struct opus_lfo {
+    unsigned char instrument;              /* 0 synth, 1 drum */
+    unsigned char slot;                    /* 0-7 */
+    unsigned char voice;                   /* a voice pass's or trigger's voice (synth 0-5, drum 0-11); 255 the
+                                              instrument's own (passes 2, 4, 5) */
+    unsigned char pass;                    /* in apply: 0-5 */
+    short *params;                         /* the slot's settings (nparams), its sound's record */
+    void *state;                           /* the type's memory for the slot (state_size bytes, zero at the slot's
+                                              load and at a pick) */
+};
+struct opus_lfo_type {
+    unsigned size;                         /* sizeof (struct opus_lfo_type) */
+    const char *name;                      /* the list's row and the record's type: permanent, 1-15 characters */
+    unsigned short nparams;                /* 1-64 */
+    unsigned short state_size;             /* bytes a slot */
+    const short *defaults;                 /* nparams: a pick's settings */
+    void (*tick)(struct opus_lfo *l);      /* the audio thread, once a block (before the block's last pass) */
+    int (*apply)(struct opus_lfo *l);      /* the audio thread, each pass: 1 when it moved something */
+    void (*trigger)(struct opus_lfo *l);   /* the audio thread: a note started */
+    /* Its page on the synth's T4 (the core's page service, as an engine's T4 page: opus_page_*; opus_lfo_page() for its
+       slot). Since core 2.27 the drum's T4 shows it too (before, the stock MIDI LFO's page). */
+    void (*page)(void);                    /* the display thread: the whole drawing */
+    int (*turn)(int encoder, int detents); /* KeyHandler: 0 blue .. 3 orange, in detents; after a change,
+                                              opus_lfo_changed; 1 taken */
+    int (*key)(int key, int pressed);      /* KeyHandler: a key on its page (the encoders' pushes 0x3B-0x3E); 1 taken */
+    /* From here on (2026-11-07, core 2.31): its own page, as every module type's (opus_page above): its T4 screen, and
+     * keys and turns with pg->par its settings (pg->n of them) and pg->inst the slot's struct opus_lfo; a change taken
+     * is kept as opus_lfo_changed keeps it. Not called while the slot's LFO is off (T4's toggle). */
+    const char *svg;
+    void (*screen_init)(void *scr);
+    void (*screen_draw)(void *scr, int dt);
+    int (*page_key)(struct opus_page *pg, int key, int pressed);
+    int (*page_turn)(struct opus_page *pg, int encoder, int detents);
+};
+int opus_lfo_register(struct opl_self *self, const struct opus_lfo_type *t);   /* from opl_init; 1, 0 a bad type or
+                                                                                   no room */
+/* In apply: a turn of delta on the pass's copy, the OS's own turn kept inside the parameter's range: an engine's knob
+ * (OPUS_LFO_ENGINE, param its encoder 0-3: passes 0 synth, 3 drum), its shift layer's (OPUS_LFO_ENGINE_SHIFT, param
+ * the encoder: the knob the engine says it turns with shift, opus_engine.shift_knobs; the synth's pass 0), an envelope
+ * setting (OPUS_LFO_ENVELOPE, 0-3 attack, decay, sustain, release: passes 1 synth, 4 drum), the effect's parameter
+ * (OPUS_LFO_EFFECT, 0-7, its shift layer 4-7 too: passes 2 synth, 5 drum), the sound itself (OPUS_LFO_SOUND, core 2.22,
+ * the stock element LFO's last group: 0 the voice's volume, its gain x (1 + delta), and 1 its pitch, x 2^delta (an
+ * octave either way at full): the synth's pass 0; 2 ring, the instrument's sound x delta, and 3 duck, the sound less
+ * its delta share: passes 2 synth, 5 drum; delta Q15). 1 done, 0 not this pass or no such target. */
+#define OPUS_LFO_ENGINE 0
+#define OPUS_LFO_ENVELOPE 1
+#define OPUS_LFO_EFFECT 2
+#define OPUS_LFO_ENGINE_SHIFT 3
+#define OPUS_LFO_SOUND 4
+int opus_lfo_move(const struct opus_lfo *l, int group, int param, int delta);
+struct opus_lfo *opus_lfo_page(void);      /* the LFO page's slot (its settings, its state), 0 none */
+void opus_lfo_changed(const struct opus_lfo *l);   /* KeyHandler: its settings into the slot's sound and row */
 
 /* A plugin's own SVG art, drawn as its page needs (2026-10-23: Opus 1's svgpage, so its engine pages port as they were:
  * the amp's knob pointers turned, its label rows lit one at a time). opus_art_open names the file (checked and loaded
@@ -592,6 +892,11 @@ int opus_art_text(struct opl_self *self, const char *name, const char *svg, unsi
  * id, as the parser reads ids, and of the same kind: the OS finds its elements by id), or when another plugin replaced
  * that screen first. 0, -1 refused, -2 taken. */
 int opus_replace(struct opl_self *self, const char *os_path, const char *data, unsigned len);
+/* A screen Opus 2 ships reduced, drawn as stock again (core 2.14): the install has such a screen's drawing reduced to
+ * its names (the OS builds every screen at the start; a screen Opus never shows costs no memory then) and keeps the
+ * stock drawing aside, copied from the OP-1's own firmware. For a plugin that brings that screen's function back:
+ * opus.stockhelp, "help.svg". From opl_init. 0, -1 none kept (the boot log), -2 another plugin has the screen. */
+int opus_stock_screen(struct opl_self *self, const char *name);
 int opus_art_ready(int art);
 void opus_art_draw(int art);
 int opus_art_show(int art, const char *id, int on);
@@ -646,6 +951,10 @@ struct opus_sequencer {
     void (*screen_init)(void *scr);
     void (*screen_draw)(void *scr, int dt);
     const char *alias;                     /* or 0 */
+    /* From here on (2026-11-07, core 2.31): its page's keys and turns, as every module type's (opus_page above; pg->n is
+     * 0: a sequencer keeps its own data). page_turn gets detents, where the older turn got the OS's raw delta. */
+    int (*page_key)(struct opus_page *pg, int key, int pressed);
+    int (*page_turn)(struct opus_page *pg, int encoder, int detents);
 };
 int opus_seq_register(struct opl_self *self, const struct opus_sequencer *s);
 int opus_seq_mode(void);                   /* the instrument the OS's sequencer calls are for now: 0 synth, 1 drum */

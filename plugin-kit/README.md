@@ -46,9 +46,13 @@ Synth engines, effects and themes, as the examples show, and much more ([api.md]
 - **Small apps.** A plugin can be just a panel in the mods list or a page of its own over T1: a BPM-to-delay
   calculator, setlist notes, stats.
 - **Changes to how the OS behaves**, which the user switches on and off live from the plugin's settings.
-
-Not yet: a plugin cannot play notes or move another plugin's knobs over time, so sequencers, arpeggiators and LFOs
-are not something the core offers a service for.
+- **LFOs.** A row of your own in the OS's LFO list (shift + T4), with its own T4 page: it moves an engine's knobs
+  (a plugin engine's too), the envelope, the effect, the volume and the pitch, at a rate in Hz or locked to the
+  tempo. Opus's matrix is one.
+- **Sequencers.** A row of your own in the OS's sequencer list: it takes finger's place for the synth or the drum,
+  plays notes from the sequencer clock and has its own page.
+- **Drum engines.** A row of your own in the drum's engine list, its kits saved, loaded and moved by the LFO like the
+  OS's own.
 
 ## Quick start
 
@@ -77,3 +81,11 @@ check that tells whether a set of plugins loads together.
 ## Licence
 
 GPL-3.0 ([LICENSE](LICENSE)): the tools, the headers, the docs and the examples. Opus is by LizardMan.
+
+Two additional terms (GPL-3.0 section 7, points c and e) apply to the kit, its examples and the plugins made with it:
+
+- A modified version has to be marked as different from the original.
+- It can't use the original plugin's name.
+
+So a plugin you share keeps its name: someone who changes it shares the change under a name of their own, marked as
+a modified version of yours.

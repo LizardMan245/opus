@@ -46,12 +46,13 @@ run the OP-1, they can. So:
    (the menu, T2): its row says "loaded" or why not. Then what to press and what to listen for.
 5. **Ask what they saw and heard**, and fix from that. If the OP-1 crashed: the next start leaves the plugin out
    ("skipped: crashed") unless developer mode is on; holding Stop while switching on starts with no plugins. Ask
-   for the crash log (disk mode, the `crash` folder, `N.txt`) and read it with `python tools/crashlog.py N.txt
+   for the crash log (disk mode, the `logs` folder, `N.txt`) and read it with `python tools/crashlog.py N.txt
    --plugin ID=build/NAME.build/plugin_0.elf`: the plugin's addresses show as its function and offset.
 6. **Its CPU figure** (any plugin with audio code): have them play the heaviest case (all voices, chords, its
    heaviest settings) with developer mode on, then read "audio: worst N" in its details (orange push on its row in
    the mods list), and write `cycles N` into the plugin folder's `cpu.txt` (see `examples/opus.bitcrush/cpu.txt`).
-   The build writes it into the manifest; without it the core holds the plugin to a tenth of the audio block.
+   The build writes it into the manifest; without it the core measures the plugin against a tenth of the audio block.
+   Going over the figure is shown, not punished: late blocks (clicks) are what the core acts on (docs/api.md).
 7. **Record what was tested:** a `checked device DATE what was played` line in `manifest.txt`, only after they
    confirmed it on their OP-1.
 

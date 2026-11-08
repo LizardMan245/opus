@@ -2,8 +2,8 @@
 
     python tools/crashlog.py N.txt [--plugin ID=build/NAME.build/plugin_0.elf ...]
 
-After a crash, the OP-1's next start writes a crash log; disk mode shows it in the crash folder on the USB disk
-(/crash/N.txt, the last eight). Its first lines are readable as they are; after them comes the whole crash record in
+After a crash, the OP-1's next start writes a crash log; disk mode shows it in the logs folder on the USB disk
+(/logs/N.txt, the last eight). Its first lines are readable as they are; after them comes the whole crash record in
 hexadecimal, which this reads: what stopped the OP-1, how long after the start, where the processor was, the frame
 chain and the stack's words that look like return addresses, and the plugins that were loaded. An address inside a
 plugin shows as its id and offset; with --plugin, your own build's linked file names the function too (the plugin
@@ -23,7 +23,9 @@ FIELDS = ('count', 'state', 'how', 'uptime_ms', 'cycles_lo', 'cycles_hi', 'kind'
           'screen', 'pool_used', 'menu', 'nframes')
 TALLY = ('passes', 'failed', 'cleared', 'ms')
 SIZE_1 = 16 + 4 * len(FIELDS) + 4 * FRAMES + 4 + PLUGINS * 60 + 32 + 256 + 4 * STACK
-SIZES = (SIZE_1, SIZE_1 + 12, SIZE_1 + 16)
+SIZE_2 = SIZE_1 + 4 * len(TALLY)                # up to 2026-11-04
+REGS = ('regs_from',) + tuple(f'r{k}' for k in range(8)) + tuple(f'p{k}' for k in range(6)) +     tuple(f'i{k}' for k in range(4)) + ('astat', 'rfp', 'rsp')   # the crashed code's registers, from 2026-11-04
+SIZES = (SIZE_1, SIZE_1 + 12, SIZE_2, SIZE_2 + 4 * len(REGS))
 KINDS = {1: "an assert (the OS's fatal message)", 2: 'an exception', 3: 'a freeze (no audio block for 2 s)'}
 HOWS = {0: 'nothing yet', 1: 'stop', 2: 'the power switch', 3: "the screen's guard (the screen stopped)",
         4: 'the screen (no key chip answered for 10 s)'}
@@ -84,8 +86,10 @@ def parse(data):
     r['build'] = _cstr(data[at:at + 32])
     r['text'] = _cstr(data[at + 32:at + 288])
     r['stack'] = list(struct.unpack_from(f'<{STACK}I', data, at + 288))
-    n = (size - SIZE_1) // 4
+    n = min((size - SIZE_1) // 4, len(TALLY))
     r.update(zip(TALLY[:n], struct.unpack_from(f'<{n}I', data, SIZE_1)))
+    if size >= SIZE_2 + 4 * len(REGS):
+        r.update(zip(REGS, struct.unpack_from(f'<{len(REGS)}I', data, SIZE_2)))
     return r
 
 
@@ -132,6 +136,21 @@ def code_like(a, plugins):
             or any(p['base'] <= a < p['base'] + p['size'] for p in plugins)) and not a & 1
 
 
+REGS_FROM = {1: 'where it faulted', 2: 'where the freeze watch found it', 3: "the screen's caller's (an assert)"}
+
+
+def register_lines(r, w):
+    """The crashed code's registers (records from 2026-11-04), each with what it points into when that is code."""
+    if not r.get('regs_from'):
+        return []
+    out = [f"registers, {REGS_FROM.get(r['regs_from'], r['regs_from'])}:"]
+    for names in (('r0', 'r1', 'r2', 'r3'), ('r4', 'r5', 'r6', 'r7'), ('p0', 'p1', 'p2'), ('p3', 'p4', 'p5'),
+                  ('i0', 'i1', 'i2', 'i3')):
+        out.append('  ' + '  '.join(f'{n} 0x{r[n]:08x}' + (f' ({w(r[n])})' if w(r[n]) else '') for n in names))
+    out.append(f"  astat 0x{r['astat']:08x}  fp 0x{r['rfp']:08x}  sp 0x{r['rsp']:08x}")
+    return out
+
+
 def report(r, named=None):
     named = named or {}
     w = lambda a: where(a, r['plugins'], named)   # noqa: E731
@@ -152,6 +171,7 @@ def report(r, named=None):
     out.append(f"reti    0x{r['reti']:08x}  {w(r['reti'])}")
     out.append(f"sp 0x{r['sp']:08x} fp 0x{r['fp']:08x}; the screen 0x{r['screen']:x}; "
                f"Opus's menu page {r['menu'] & 0xFF}")
+    out += register_lines(r, lambda a: w(a) if code_like(a, r['plugins']) else '')   # code only: data stays plain
     out.append('')
     out.append('frames (return addresses up the frame chain):')
     for i, a in enumerate(r['frames']):
@@ -171,7 +191,7 @@ def report(r, named=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('log', help="a crash log from the OP-1's USB disk (/crash/N.txt)")
+    ap.add_argument('log', help="a crash log from the OP-1's USB disk (/logs/N.txt; /crash/N.txt before beta 4)")
     ap.add_argument('--plugin', action='append', default=[], metavar='ID=ELF',
                     help="your plugin's id and its build's linked file, build/NAME.build/plugin_0.elf: its "
                          "functions named (more than one allowed)")

@@ -50,6 +50,15 @@ void ota_fast(short *to)
     scratch = to + OTA_WAVES * OTA_WLEN;
 }
 
+/* The bank and the scratch where they are this block (1.4.0, core 2.21: on lease): no copy. */
+void ota_fast_at(short *at)
+{
+    if (!at)
+        return;
+    bank = at;
+    scratch = at + OTA_WAVES * OTA_WLEN;
+}
+
 int ota_fast_bytes(void)
 {
     return (OTA_WAVES * OTA_WLEN + 128) * (int)sizeof(short);   /* the bank, and the arms' sum */
@@ -263,10 +272,17 @@ void drive_loop(struct ota_fx *f, short *buf, int drive, int g0, int g1, int s)
         const int x = buf[i];
         in += (((x < 0 ? -x : x) << 8) - in) >> FOLLOW;
         const int y = shape((x * drive) >> 8, s);
-        const int h = y - hp_x + hp_y - ((DC_LEAK * hp_y) >> 15);
+        /* 1.4.3: the leak and the fizz's step rounded away from 0, so each always moves toward its target and a
+           silence ends at 0 (rounded down, the blocker's state stuck at any positive value under 32768 / DC_LEAK, about
+           697, and the lowpass at -1: a constant of over a hundred after every note, into the effects after it, for
+           ever; within 1 of 32,768 of the old values while playing) */
+        const int k = DC_LEAK * hp_y;
+        const int h = y - hp_x + hp_y - (k > 0 ? (k + 32767) >> 15 : -((32767 - k) >> 15));
         hp_x = y;
         hp_y = h;
-        lp += (FIZZ * (h - lp)) >> 15;     /* the drive's output as heard (the fizz's lowpass in), then matched */
+        const int d = FIZZ * (h - lp);
+        lp += d > 0 ? (d + 32767) >> 15 : -((32767 - d) >> 15);   /* the drive's output as heard (the fizz's lowpass
+                                                                       in), then matched */
         out += (((lp < 0 ? -lp : lp) << 8) - out) >> FOLLOW;
         int z = limit((((lp * (g0 + (((g1 - g0) * i) >> 6))) >> 12) * OUT_GAIN) >> 12);
         z = z > 32767 ? 32767 : z;

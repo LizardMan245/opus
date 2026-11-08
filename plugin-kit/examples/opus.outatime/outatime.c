@@ -36,7 +36,11 @@ static volatile short heard[8];            /* the newest voice's knobs (the LFO 
 struct voice {
     struct ota_voice v;
     int held;
+    unsigned serial;                       /* its note's number: the newest's refreshes newest at its render */
 };
+static volatile unsigned newest_serial, serials;
+static struct opus_fast_lease *lease;      /* 1.4.0 (core 2.21): the era waves and the scratch on lease, fast while it
+                                              plays (priority high); 0 on an older core: fixed as before */
 static volatile int held_n;
 static const struct ota_voice *volatile newest;
 static volatile unsigned blocks;
@@ -75,6 +79,8 @@ static void v_note_on(void *voice, const short *knobs)
     if (!w->held)
         ++held_n;
     w->held = 1;
+    w->serial = ++serials;
+    newest_serial = w->serial;
     newest = &w->v;
 }
 
@@ -91,6 +97,11 @@ static void v_render(void *voice, short *out, const short *par, const unsigned *
 {
     for (int k = 0; k < 8; ++k)
         heard[k] = par[k];
+    struct voice *const w = (struct voice *)voice;
+    if (w->serial && w->serial == newest_serial)
+        newest = &w->v;                    /* where its state is this block (OPUS_ENGINE_STATE_MOVES) */
+    if (lease)
+        ota_fast_at((short *)opus_fast_use(lease));
     const unsigned t = cycles();
     ota_render(&((struct voice *)voice)->v, out, par, pitch[0]);
     render_sum += cycles() - t;
@@ -199,6 +210,9 @@ static const struct opus_engine OUTATIME = {
     /* a new sound: 1985, 18 mph, 0.31 gigawatts, trail 35; spread 40, flux 30, tone 50 (0-99) */
     .knobs = { 16549, 6620, 8274, 11584, 0, 13239, 9929, 16549 },
     .voice = sizeof(struct voice),
+    .flags = OPUS_ENGINE_STATE_MOVES,  /* 1.4.0: newest refreshed at each render */
+    .shift_knobs = { OTA_SPREAD, OTA_TONE, OTA_FLUX, -1 },   /* 1.4.1: its shift layer for an LFO (orange: the drive's
+                                              type, in its data) */
     .init = v_init,
     .note_on = v_note_on,
     .release = v_release,
@@ -220,7 +234,11 @@ int opl_init(struct opl_self *self)
     always = opus_setting(self, "drive");
     opus_on_setting(self, setting);
     ota_fx_init(&fx);
-    ota_fast((short *)opus_fast(self, (unsigned)ota_fast_bytes()));   /* the era waves in L1, or read in SDRAM */
+    short *const own = (short *)opus_alloc(self, (unsigned)ota_fast_bytes());   /* the waves' own copy, on lease */
+    if (own) {
+        ota_fast(own);
+        lease = opus_fast_lease(self, (unsigned)ota_fast_bytes(), OPUS_FAST_CONST, own);
+    }
     ota_page_init(self);                   /* without its art or memory: the plain page */
     return opus_engine_add(self, &OUTATIME) < 0 ? -1 : 0;
 }

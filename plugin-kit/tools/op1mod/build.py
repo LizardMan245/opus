@@ -22,7 +22,12 @@ DEFAULT_TOOLCHAIN = os.path.normpath(os.path.join(REPO, '..', 'bfin-toolchain'))
 # silicon bugs (anomalies).  Plain bf524 means revision 0.2; the device's revision is not
 # verified yet, so `-any` enables the workarounds for every revision (safe, slightly slower).
 CPU = '-mcpu=bf524-any'
-CFLAGS = [CPU, '-O2', '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra', '-Werror']
+# -fno-indirect-inlining: GCC 13 at -O2 turns a call through a function pointer that inlining makes a constant which
+# is not a function it knows (an OS address: a fw_ name, a cast address) into __builtin_unreachable and deletes every
+# path that reaches it, the checks before it included ("discovered direct call to non-function"): a helper taking the
+# OS function to fall back on as an argument silently lost its fallback. Without indirect inlining such a call stays
+# a call.
+CFLAGS = [CPU, '-O2', '-fno-indirect-inlining', '-ffreestanding', '-fno-builtin', '-Wall', '-Wextra', '-Werror']
 
 
 class BuildError(Exception):
@@ -65,6 +70,22 @@ def run(cmd, out_path=None):
     return p.stdout
 
 
+BUFFER_MIN = 512                           # bytes: a static object this large may take a whole page's read
+
+
+def unaligned_buffers(nm_sized):
+    """`nm -S -n` lines -> the data objects of BUFFER_MIN bytes or more at an odd address, as "name at 0x...".
+    A file read of a whole page into an odd address stops the OP-1 (the flash driver's assert, te_yflash2.c:600
+    "!((unsigned int)data & 1)"; 2026-10-17, opus.dx; 2026-10-31, the index's head buffer, moved to an odd address when
+    another file's statics changed the layout)."""
+    out = []
+    for line in nm_sized.splitlines():
+        f = line.split()
+        if len(f) == 4 and f[2] in 'bBdD' and int(f[1], 16) >= BUFFER_MIN and int(f[0], 16) % 2:
+            out.append(f'{f[3]} at 0x{int(f[0], 16):08x}')
+    return out
+
+
 def read_version(mod_dir):
     """(version, build) from mod_dir/VERSION: its first line and its optional second ('' where
     missing); each 1-15 printable characters, no quotes or backslashes (they become C strings)."""
@@ -100,15 +121,46 @@ def read_dev(mod_dir):
 L1_BASE = 0xFF800000                       # L1 memory: sections linked here are not in the payload
 
 
-def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
+# A mod whose link.ld has these markers is linked twice (2026-11-04): once to measure,
+# then with the functions and variables the audio and the screen reach (hotcold.py) listed where the markers stand,
+# in SDRAM bank 1; the rest goes where the script puts it (Opus: bank 2, the far region at 0x02C00000).
+MARKS = ('/*@AUDIO_TEXT@*/', '/*@FRAME_TEXT@*/', '/*@HOT_RODATA@*/', '/*@HOT_BSS@*/', '/*@HOT_DATA@*/')
+FAR_BASE = 0x02000000                      # sections from here up (below L1) are the far part: their own LDR blocks
+
+
+def split_script(text, t=None):
+    """link.ld with its markers filled from hotcold.tiers() (t), or emptied (t None: the measuring pass)."""
+    def sections(prefix, names):
+        return ' '.join(f'*({prefix}.{n})' for n in sorted(names))
+    fill = {
+        MARKS[0]: sections('.text', t['audio']) if t else '',
+        MARKS[1]: sections('.text', t['frame']) if t else '',
+        MARKS[2]: sections('.rodata', t['audio_data'] | t['frame_data']) if t else '',
+        MARKS[3]: sections('.bss', t['audio_data'] | t['frame_data']) if t else '',
+        MARKS[4]: sections('.data', t['audio_data'] | t['frame_data']) if t else '',
+    }
+    for k, v in fill.items():
+        text = text.replace(k, v)
+    return text
+
+
+def build(mod_dir, out_dir, tc=None, hits=None, defines=(), count=True):
     """-> dict(elf, bin, lst, map, size, symbols, l1, zero, hits) for the mod in mod_dir.  l1: {section
     name: (VMA, bytes)} for the sections linked into L1 (link.ld, e.g. .l1code at 0xFFA040C8 for an
     `l1code` hook): they are cut out of the payload, which holds SDRAM only, and placed by their hooks.
     hits: the places that may be counted (hits.candidates); those whose symbol is code get a counter
     and a stub (hits.source), and `hits` in the result is [(place address, stub symbol, label)].
-    defines: names given to every C and .S source (-D; the release build's OPUS_RELEASE)."""
+    defines: names given to every C and .S source (-D; the release build's OPUS_RELEASE). count=False: the stubs
+    without counters (a release build: places reach code in bank 2 through them, hits.source).
+    A link.ld with MARKS splits the mod (split_script): the result's `far` is (VMA, bytes) of its sections from
+    FAR_BASE up, and `far_zero` (address, bytes) their zero fill; `tiers` the measured tiers' sizes."""
     tc = toolchain(tc)
     name = os.path.basename(os.path.normpath(mod_dir))
+    if os.path.isdir(os.path.join(mod_dir, 'plugins')):   # a core with its plugins: the two worlds stay apart (R61)
+        from worlds import check
+        crossed = check(mod_dir)
+        if crossed:
+            raise BuildError(crossed)
     ld_script = os.path.join(mod_dir, 'link.ld')
     if not os.path.exists(ld_script):
         raise BuildError(f'{mod_dir} has no link.ld')
@@ -128,13 +180,17 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
     with open(os.path.join(out_dir, 'mod_version.h'), 'w', newline='\n') as f:
         f.write(f'/* Generated by op1mod build from VERSION and DEV. */\n#define MOD_VERSION "{version}"\n'
                 f'#define MOD_BUILD "{build_no}"\n' + (f'#define MOD_DEV "{dev}"\n' if dev is not None else ''))
+    script_text = open(ld_script).read()
+    split = all(m in script_text for m in MARKS)
+    sect = ['-ffunction-sections', '-fdata-sections'] if split else []   # each function and variable placeable
     objs = []
     for src in sources:
         obj = os.path.join(out_dir, os.path.splitext(os.path.basename(src))[0] + '.o')
         if src.endswith('.s'):
             run([tool(tc, 'as'), CPU, '-o', obj, src])
         else:
-            run([tool(tc, 'gcc')] + CFLAGS + ['-D' + d for d in defines] + ['-I', out_dir, '-c', '-o', obj, src])
+            run([tool(tc, 'gcc')] + CFLAGS + sect + ['-D' + d for d in defines] + ['-I', out_dir, '-c', '-o', obj,
+                                                                                    src])
         objs.append(obj)
     stubs = []
     if hits is not None:                   # the hit counters (hits.py): stubs for the places whose symbol is code
@@ -142,7 +198,7 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
         code = {}
         for obj in objs:
             code.update(code_symbols(run([tool(tc, 'objdump'), '-t', obj]).splitlines()))
-        text, stubs = source(hits, code)
+        text, stubs = source(hits, code, count)
         src = os.path.join(out_dir, '_hits.s')
         with open(src, 'w', newline='\n') as f:
             f.write(text)
@@ -151,6 +207,24 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
         objs.append(obj)
     elf = os.path.join(out_dir, name + '.elf')
     mapf = os.path.join(out_dir, name + '.map')
+    tier_sizes = None
+    if split:                              # the measuring pass, then the placing one
+        from hotcold import tiers
+        first = os.path.join(out_dir, 'link_measure.ld')
+        with open(first, 'w', newline='\n') as f:
+            f.write(split_script(script_text))
+        measure = os.path.join(out_dir, name + '_measure.elf')
+        run([tool(tc, 'gcc'), CPU, '-nostdlib', '-T', first, '-o', measure] + objs + ['-lgcc'])
+        t = tiers(measure, tc)
+        if t['missing']:
+            raise BuildError(f'{name}: the audio or frame roots {", ".join(t["missing"])} are not in the build '
+                             '(tools/op1mod/hotcold.py ROOTS): renamed? update the list')
+        size = {n: s for _, s, n in t['fns']}
+        tier_sizes = {'audio': sum(size[n] for n in t['audio']), 'frame': sum(size[n] for n in t['frame']),
+                      'variables': len(t['audio_data'] | t['frame_data'])}
+        ld_script = os.path.join(out_dir, 'link_split.ld')
+        with open(ld_script, 'w', newline='\n') as f:
+            f.write(split_script(script_text, t))
     run([tool(tc, 'gcc'), CPU, '-nostdlib', '-T', ld_script, '-Wl,-Map=' + mapf, '-o', elf] + objs + ['-lgcc'])
     binf = os.path.join(out_dir, name + '.bin')
     # The sections linked into L1 (an ALLOC section whose VMA is at or above 0xFF800000).
@@ -160,7 +234,14 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
         f = head.split()
         if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and int(f[3], 16) >= L1_BASE and int(f[2], 16):
             l1_names.append((f[1], int(f[3], 16)))
-    cut = [a for n, _ in l1_names for a in ('-R', n)]
+    # The far part (VMA from FAR_BASE, below L1): its own blocks, as L1's are cut out of the payload.
+    far_names = []
+    for head, flags in zip(lines, lines[1:]):
+        f = head.split()
+        if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and FAR_BASE <= int(f[3], 16) < L1_BASE \
+                and int(f[2], 16):
+            far_names.append((f[1], int(f[3], 16), int(f[2], 16), 'LOAD' in flags))
+    cut = [a for n, _ in l1_names for a in ('-R', n)] + [a for n, _, _, _ in far_names for a in ('-R', n)]
     # .bss (zero-initialised globals) is not stored in an ELF file, and SDRAM there is not
     # zeroed by anyone else.  The payload holds what has contents (to .data's end); the zeros
     # after it, to .bss's end, are one FILL block (`zero`: (address, bytes)), which the loader
@@ -180,12 +261,16 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
         f = line.split()
         if len(f) == 3:
             syms.append((int(f[0], 16), f[1], f[2]))
+    odd = unaligned_buffers(run([tool(tc, 'nm'), '-S', '-n', elf]))
+    if odd:
+        raise BuildError(f'{elf}: ' + ', '.join(odd) + ': a large static object at an odd address (a whole '
+                         'page read into an odd address stops the OP-1); give it __attribute__((aligned(32)))')
     # The payload starts at the lowest address of any allocated section outside L1 (objdump -h: a
     # line "Idx Name Size VMA LMA Off Algn", then its flags).
     vmas = []
     for head, flags in zip(lines, lines[1:]):
         f = head.split()
-        if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and int(f[2], 16) and int(f[3], 16) < L1_BASE:
+        if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and int(f[2], 16) and int(f[3], 16) < FAR_BASE:
             vmas.append(int(f[3], 16))
     if not vmas:
         raise BuildError(f'{elf}: no allocated section')
@@ -196,11 +281,31 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=()):
     for head, flags in zip(lines, lines[1:]):
         f = head.split()
         if (len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and 'LOAD' not in flags and int(f[2], 16)
-                and load <= int(f[3], 16) < L1_BASE and f[1] in ('.bss', 'COMMON', '.sbss')):
+                and load <= int(f[3], 16) < FAR_BASE and f[1] in ('.bss', 'COMMON', '.sbss')):
             end = max(end, int(f[3], 16) + int(f[2], 16))
     end = (end + 3) & ~3
     zero = (load + size, end - load - size) if end > load + size else None
     if zero and size % 4:
         raise BuildError(f'{elf}: the payload ends at 0x{load + size:08x}, not on a word: the zero fill must start on one')
+    far = far_zero = None
+    loaded = [(n, vma, sz) for n, vma, sz, ld in far_names if ld]
+    if loaded:                             # the far part's loaded sections, contiguous, as one block
+        lo = min(v for _, v, _ in loaded)
+        hi = max(v + sz for _, v, sz in loaded)
+        part = os.path.join(out_dir, f'{name}_far.bin')
+        run([tool(tc, 'objcopy'), '-O', 'binary'] + [a for n, _, _ in loaded for a in ('-j', n)] + [elf, part])
+        body = open(part, 'rb').read()
+        if len(body) != hi - lo:
+            raise BuildError(f'{elf}: the far part is {len(body)} bytes, its sections span {hi - lo}')
+        if len(body) % 4:
+            body += bytes(4 - len(body) % 4)
+        far = (lo, body)
+        zeros = [(v, sz) for n, v, sz, ld in far_names if not ld and v >= lo]
+        if zeros:
+            z0 = lo + len(body)
+            z1 = max(v + sz for v, sz in zeros)
+            if min(v for v, _ in zeros) < z0:
+                raise BuildError(f'{elf}: a far zeroed section starts inside the far payload')
+            far_zero = (z0, (z1 - z0 + 3) & ~3)
     return dict(elf=elf, bin=binf, lst=lst, map=mapf, size=size, symbols=syms, load=load, l1=l1, zero=zero,
-                hits=stubs)
+                hits=stubs, far=far, far_zero=far_zero, tiers=tier_sizes)

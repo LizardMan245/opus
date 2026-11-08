@@ -35,3 +35,6 @@ share yours, and say in its README what you checked.
       you.
 - [ ] Its licence: the examples and the kit are GPL-3.0, so a plugin built from an example's code is GPL-3.0 too and
       its source goes with it.
+- [ ] The kit's two additional terms (README, Licence): a modified version has to be marked as different from the
+      original, and it can't use the original plugin's name. A plugin changed from someone else's gets a name and an
+      id of its own, and says whose it came from.

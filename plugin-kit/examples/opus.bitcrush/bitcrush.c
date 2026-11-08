@@ -141,6 +141,7 @@ static void view(const short *par, struct opus_fx_view *v)
 static const struct opus_effect BITCRUSH = {
     .size = sizeof(struct opus_effect),
     .name = "bitcrush",
+    .aliases = "opus1:8",              /* 2.0.2 (core 2.33): Opus 1's number 8 for it, in its settings */
     .defaults = { 19968, 15360, 0, 32767, 0, 0, 0, 0 },
     .limits = { { 0, 32767, 8192 }, { 0, 32767, 16384 }, { 0, 32767, 10485 }, { 0, 32767, 10485 },
                 { 0, 32767, 0 }, { 0, 32767, 0 }, { 0, 32767, 0 }, { 0, 32767, 0 } },

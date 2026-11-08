@@ -32,6 +32,7 @@ void ota_fx_init(struct ota_fx *f);
 void ota_block(struct ota_fx *f, short *buf, const short *par);
 /* The era waves (OTA_WAVES x OTA_WLEN samples) copied to fast memory (L1, opus_fast), or none: then read in SDRAM. */
 void ota_fast(short *bank);
+void ota_fast_at(short *at);                /* where the bank is this block, no copy */
 int ota_fast_bytes(void);
 
 /* For the page: the knobs as the page shows them. */

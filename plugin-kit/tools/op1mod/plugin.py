@@ -15,7 +15,8 @@ beyond a call's ±16 MB.  The image is linked twice at two bases
 
   header (0x60 bytes), the manifest (the author's lines and the built ones), the image (code and data,
   as linked at the first base), imports (u32: each name's offset in the strings), relocations (12 bytes:
-  site | kind << 28 | import << 31, target, value), exports (8 bytes: name offset, offset in the image),
+  site | kind << 28 | zero fill << 30 | import << 31, target, value; the flags' FLAG_APART says the zero fill
+  marks are there, 2026-11-02), exports (8 bytes: name offset, offset in the image),
   places (24 bytes: kind | expected length << 8, the firmware's address, the target's offset in the
   image, the place's name offset, the 8 expected bytes), the strings; the CRC-32 of the whole file with
   its own field 0.
@@ -51,13 +52,17 @@ PLACE_KINDS = {'call': 0, 'jump': 1, 'ldimm': 2, 'word': 3, 'patch': 4}
 PLACE_NAMES = {v: k for k, v in PLACE_KINDS.items()}
 PLACE_SWITCHED = 0x80                      # in the kind byte: switched by its plugin (opus_place_set), not installed at load
 FLAG_CODE, FLAG_PACK, FLAG_LIBRARY = 1, 2, 4
+FLAG_APART = 8                             # its addresses into the zero fill marked (relocation bit 30, opmod.ZERO):
+                                           # a loader from dev 105 on may place the zero fill apart from the image (2026-11-02)
+REL_ZERO = 1 << 30
 KINDS = {'word': 0, 'lo': 1, 'hi': 2, 'call': 3}
 KIND_NAMES = {v: k for k, v in KINDS.items()}
 STUB_PREFIX = 'opimp_'                     # the import a stub loads: C name opimp_NAME, the plugin calls NAME
 CALL_RELOCS = ('R_BFIN_PCREL24', 'R_BFIN_PCREL24_JUMP_L', 'R_BFIN_PCREL24_CALL_X')
 ID_RE = re.compile(r'^[a-z0-9_]+(\.[a-z0-9_]+)+$')
 VERSION_RE = re.compile(r'^\d+\.\d+(\.\d+)?$')
-REPEATED = ('needs', 'breaks', 'setting', 'place', 'replace', 'pack', 'uses', 'removes', 'adds', 'checked', 'theme')
+REPEATED = ('needs', 'breaks', 'setting', 'place', 'replace', 'pack', 'uses', 'removes', 'adds', 'checked', 'theme',
+            'replaces', 'exports')            # exports on several lines (2026-11-03: orbit3d 0.2's outgrew 159 characters)
 THEMES_MAX = 4                             # loader.c THEMES_MAX
 NEEDS_MAX = 4                              # loader.c NEEDS_MAX
 LINE_MAX = 159                             # loader.c reads a manifest line into char line[160]
@@ -113,6 +118,8 @@ def read_manifest(text):
     for key in BUILT:
         if key in out and not (key == 'cpu' and out[key] == 'user'):   # 2026-10-25: a manager's own word
             raise PluginError(f'manifest: {key} is written by the build')
+    if out.get('priority', 'normal') not in ('high', 'normal', 'low'):   # core 2.21: the shared fast memory's order
+        raise PluginError(f'manifest: priority {out["priority"]!r}: high, normal or low')
     if len(out.get('needs', [])) > NEEDS_MAX:     # the core reads 4 and would pass over the rest
         raise PluginError(f'manifest: {len(out["needs"])} needs lines, the core reads {NEEDS_MAX}')
     for need in out.get('needs', []):
@@ -205,7 +212,7 @@ USES_MAX = 12
 USE_INPUTS = ('tempo', 'synth', 'drum', 'tape', 'mixer', 't1', 't2', 't3', 't4', 'lift', 'drop', 'split',
               's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 'seq', 'rec', 'play', 'stop', 'left', 'right', 'mic',
               'com', 'blue_push', 'green_push', 'white_push', 'orange_push', 'blue_turn', 'green_turn',
-              'white_turn', 'orange_turn', 'keyboard')
+              'white_turn', 'orange_turn', 'keyboard', 'fn_hold')
 USE_SCREENS = ('synth', 'drum', 'tape', 'mixer')
 USE_PAGES = ('t1', 't2', 't3', 't4')      # after the input: the page (2026-10-23)
 
@@ -394,17 +401,24 @@ def write_ways(ways, path):
         f.write('\n'.join(out) + '\n')
 
 
-def exports_of(tc, elf, base, wanted, local=False):
+def exports_of(tc, elf, base, wanted, local=False, image_size=None):
     """-> [(name, offset in the image)] for the manifest's `exports` names (with local, static symbols too:
-    a place's target), from the link at `base`."""
-    have = {}
+    a place's target), from the link at `base`. With image_size: an offset at or past it must be a zero fill symbol
+    (nm's b, B) and one before it an image's, since the core takes an export's or a place's offset at or past the
+    image's size as the zero fill's (FLAG_APART): a label at the image's very end is refused."""
+    have, kinds = {}, {}
     for line in _run([tool(tc, 'nm'), elf]).splitlines():
         w = line.split()
         if len(w) == 3 and (w[1] in 'TDBR' or (local and w[1] in 'tdbr')):
             have.setdefault(w[2].lstrip('_'), int(w[0], 16) - base)
+            kinds.setdefault(w[2].lstrip('_'), w[1].upper())
     missing = [n for n in wanted if n not in have]
     if missing:
         raise PluginError('exports not defined by the plugin: ' + ', '.join(missing))
+    if image_size is not None:
+        odd = [n for n in wanted if (have[n] >= image_size) != (kinds[n] == 'B')]
+        if odd:
+            raise PluginError('a label at the image\'s end, neither code, data nor zero fill: ' + ', '.join(odd))
     return [(n, have[n]) for n in wanted]
 
 
@@ -481,10 +495,11 @@ def build(src_dir, out_path, tc=None, work=None):
     if len(image) > MAX_IMAGE or zero > MAX_IMAGE:
         raise PluginError(f'image {len(image)} bytes, zero fill {zero}: over {MAX_IMAGE}')
     entry = dict(exports_of(tc, elf0, base, ['opl_init']))['opl_init']
-    wanted = man['exports'].split() if 'exports' in man else []
-    exports = exports_of(tc, elf0, base, wanted) if wanted else []
+    wanted = ' '.join(man['exports']).split() if 'exports' in man else []
+    exports = exports_of(tc, elf0, base, wanted, image_size=len(image)) if wanted else []
     place_lines = read_places(man.get('place', []))
-    targets = dict(exports_of(tc, elf0, base, sorted({p[2] for p in place_lines}), local=True)) if place_lines else {}
+    targets = dict(exports_of(tc, elf0, base, sorted({p[2] for p in place_lines}), local=True,
+                              image_size=len(image))) if place_lines else {}
     places = [(kind, addr, targets[sym], expect, name, sw) for kind, addr, sym, expect, name, sw in place_lines]
     deep = sorted(n for n in imports if n.startswith('fw_'))
     built = [f'deep      {" ".join(deep) if deep else "none"}',
@@ -492,7 +507,8 @@ def build(src_dir, out_path, tc=None, work=None):
              f'imports   {len(imports)}',
              f'cpu       {"user" if man.get("cpu") == "user" else read_cpu(src_dir) or "unmeasured"}']
     manifest = (author_text.rstrip('\n') + AUTHOR_END + '\n'.join(built) + '\n').encode('utf-8')
-    data = write_opmod(manifest, image, zero, entry, imports, relocs, exports, library=bool(wanted), places=places)
+    data = write_opmod(manifest, image, zero, entry, imports, relocs, exports, library=bool(wanted), places=places,
+                       apart=True)
     with open(out_path, 'wb') as f:
         f.write(data)
     return {'id': man['id'], 'version': man['version'], 'bytes': len(data), 'image': len(image), 'zero': zero,
@@ -516,8 +532,10 @@ def build_code_free(out_path, man, author_text):
 
 # ---------------------------------------------------------------- the file
 
-def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), library=False, places=(), code=True):
-    """-> the .opmod bytes (the layout in the module's docstring)."""
+def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), library=False, places=(), code=True,
+                apart=False):
+    """-> the .opmod bytes (the layout in the module's docstring). apart: the relocations name opmod.ZERO for
+    every address into the zero fill (the build's link_two_bases checked it), so the flag FLAG_APART is set."""
     strings, offsets = bytearray(), {}
 
     def s(name):
@@ -529,7 +547,9 @@ def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), libra
     imp_tab = b''.join(struct.pack('<I', s(n)) for n in imports)
     rel_tab = b''
     for site, kind, name, value in relocs:
-        word = site | KINDS[kind] << 28 | (1 << 31 if name else 0)
+        if name == opmod.ZERO and not apart:
+            raise PluginError('a relocation into the zero fill in a file not marked apart')
+        word = site | KINDS[kind] << 28 | (1 << 31 if name else 0) | (REL_ZERO if name == opmod.ZERO else 0)
         rel_tab += struct.pack('<IIi', word, imp_index[name] if name else 0, value)
     exp_tab = b''.join(struct.pack('<II', s(n), off) for n, off in exports)
     pl_tab = b''.join(struct.pack('<IIII', PLACE_KINDS[kind] | (PLACE_SWITCHED if sw else 0) | len(expect) << 8, addr,
@@ -543,7 +563,7 @@ def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), libra
     for p in parts:
         offs.append(at)
         at += len(p)
-    flags = (FLAG_CODE if code else 0) | (FLAG_LIBRARY if library else 0)
+    flags = (FLAG_CODE if code else 0) | (FLAG_LIBRARY if library else 0) | (FLAG_APART if apart and code else 0)
     head = struct.pack('<4sHHII', MAGIC, FORMAT, HEADER, at, 0)
     head += struct.pack('<II', offs[0], len(manifest))
     head += struct.pack('<II', offs[1], len(image))
@@ -590,7 +610,7 @@ def read_opmod(data):
     inside(str_off, str_len, 'the strings')
     inside(exp_off, 8 * exp_n, 'the exports')
     inside(pl_off, 24 * pl_n, 'the places')
-    if not img_len and (flags & FLAG_CODE or zero or entry or imp_n or rel_n or exp_n or pl_n):
+    if not img_len and (flags & (FLAG_CODE | FLAG_APART) or zero or entry or imp_n or rel_n or exp_n or pl_n):
         raise PluginError('a code-free file (image size 0) with code\'s fields set')
     if img_len > MAX_IMAGE or zero > MAX_IMAGE or (img_len and (img_len < 4 or entry > img_len - 4 or entry & 1)):
         raise PluginError('image, zero fill or entry out of range')
@@ -604,7 +624,7 @@ def read_opmod(data):
     relocs = []
     for i in range(rel_n):
         word, target, value = struct.unpack_from('<IIi', data, rel_off + 12 * i)
-        site, kind, imported = word & 0x0FFFFFFF, (word >> 28) & 3, bool(word >> 31)
+        site, kind, imported, in_zero = word & 0x0FFFFFFF, (word >> 28) & 3, bool(word >> 31), bool(word & REL_ZERO)
         width = 4 if kind == 0 else 2
         if site + width > img_len or (kind == 3 and site < 2):
             raise PluginError(f'relocation {i} outside the image')
@@ -612,7 +632,10 @@ def read_opmod(data):
             raise PluginError(f'relocation {i}: no import {target}')
         if not imported and not 0 <= value <= img_len + zero:
             raise PluginError(f'relocation {i} points outside the image')
-        relocs.append((site, KIND_NAMES[kind], imports[target] if imported else None, value))
+        if in_zero and (imported or kind == 3 or not flags & FLAG_APART):   # loader.c check: the same refusals
+            raise PluginError(f'relocation {i}: damaged (its zero fill mark)')
+        relocs.append((site, KIND_NAMES[kind], imports[target] if imported else opmod.ZERO if in_zero else None,
+                       value))
     exports = []
     for i in range(exp_n):
         noff, off = struct.unpack_from('<II', data, exp_off + 8 * i)
@@ -688,8 +711,15 @@ def core_facts(core=CORE):
                     held[addr + k] = f'the core ({owner}.hooks)'
     return {'core': (int(re.search(r'#define CORE_MAJOR\s+(\d+)', loader).group(1)),
                      int(re.search(r'#define CORE_MINOR\s+(\d+)', loader).group(1))),
-            'names': names, 'plugins': int(re.search(r'#define OPUS_PLUGINS\s+(\d+)', opus_h).group(1)),
+            'names': names, 'plugins': plugins_cap(opus_h),
             'fx': fx, 'pages': pages, 'held': held}
+
+
+def plugins_cap(opus_h):
+    """How many plugin files a start lists: OPUS_PLUGINS in an older core (60 until dev 110); none since dev 110's
+    tables sized by the files found (9f891de), so no file is ever over it."""
+    m = re.search(r'#define OPUS_PLUGINS\s+(\d+)', opus_h)
+    return int(m.group(1)) if m else 1 << 30
 
 
 def written(kind, addr, n=4):
@@ -783,7 +813,8 @@ def check_set(paths, ldr=LDR, core=CORE):
             continue
         f.update(id=man['id'], version=man['version'], name=man['name'], info=info, ver=_version(man['version']),
                  needs=[(w.split()[0], _version(w.split()[1], 2)) for w in man.get('needs', [])],
-                 uses=_uses(man.get('uses', [])), checked=checked_of(man))
+                 uses=_uses(man.get('uses', [])), checked=checked_of(man), replaces=man.get('replaces', []),
+                 kinds={a.split()[0] for a in man.get('adds', []) if a.split() and a.split()[0] in ('engine', 'effect', 'lfo')})
         core_ver = _version(man['core'], 2)
         if core_ver[0] != facts['core'][0] or core_ver[1] > facts['core'][1]:
             f['state'], f['why'] = 'refused', f'needs core {core_ver[0]}.{core_ver[1]}'
@@ -793,9 +824,16 @@ def check_set(paths, ldr=LDR, core=CORE):
             if f is not g and f['state'] is None and g['state'] is None and f['id'] == g['id'] and \
                     (f['ver'] < g['ver'] or (f['ver'] == g['ver'] and rows.index(f) > rows.index(g))):
                 f['state'], f['why'] = 'refused', 'an older copy'
+    for g in [f for f in rows if f['state'] is None]:   # `replaces`: the plugins it takes the place of (loader.c replaced)
+        for f in rows:
+            if f is not g and f.get('id') and f['id'] != g['id'] and f['id'] in g['replaces']:
+                f['state'], f['why'] = 'refused', f'replaced by {g["name"]}'
     held = dict(facts['held'])             # a firmware byte -> who changed it
     exports, used = set(), [0, 0, 0]       # the libraries' names; the room taken, the effect service, the instance
                                            # service's pages (each 1 on, -1 not)
+
+    def own_page(f, page):                 # an engine's T1, an effect's T3, an LFO type's T4 (loader.c own_page)
+        return {1: 'engine', 3: 'effect', 4: 'lfo'}.get(page) in f.get('kinds', ())
 
     def clash(f):
         for g in rows:
@@ -805,7 +843,8 @@ def check_set(paths, ldr=LDR, core=CORE):
                 for y in g['uses']:
                     if x[3] or y[3] or x[0] != y[0] or (x[5] and y[5] and x[5] != y[5]) or (x[1] and y[1] and x[1] != y[1]) or \
                             (x[4] and y[4] and x[4] != y[4]) or (x[2] and y[2] and x[2] != y[2]) or \
-                            (x[6] and y[6] and x[6] != y[6]):
+                            (x[6] and y[6] and x[6] != y[6]) or \
+                            (x[6] and x[6] == y[6] and own_page(f, x[6]) and own_page(g, y[6])):
                         continue
                     return (f'{"fn " if x[4] == 1 else ""}{"shift " if x[1] == 1 else ""}{x[0]} is taken by '
                             f'{g["name"]}').replace('_', ' ')

@@ -133,9 +133,45 @@ mods list says "needs core 2.6". Set it to the highest version among the service
 | 2.5 | `opus_engine_show` |
 | 2.6 | another firmware's engines and effects (api.md, Core versions) |
 | 2.7 | `opus_on_settings_rows` |
+| 2.8 | `opus_alloc_audio`, `opus_page_still`, sequencers, preset sources |
+| 2.9 | `opus_called`; no fixed counts of engines, effect types, instances or sequencers |
+| 2.10 | the sampler service (`OPUS_ENGINE_SAMPLE`) |
+| 2.11 | `opus_replace` |
+| 2.12 | `opus_key_post` |
+| 2.13 | `opus_on_key_filter` |
+| 2.14 | `opus_key_timer`, `opus_stock_screen` |
+| 2.15 | every plugin may be a preset source |
+| 2.16 | the journal's USB disk steps |
+| 2.17 | presets as files (`opus_preset_file` and the rest) |
+| 2.18 | `opus_preset_delete` |
+| 2.19 | `opus_drums`, drum kits as files (`opus_kit_file` and the rest) |
+| 2.20 | `opus_folder_refused`, `opus_panel_size` |
+| 2.21 | fast memory on lease, the tempo service, LFO types, `opus_page_text_centre`; the `priority` line |
+| 2.22 | `OPUS_LFO_SOUND` |
+| 2.24 | drum engines (`OPUS_ENGINE_DRUM`, `opus_drum_key`) |
+| 2.25 | `opus_on_key_filter_first` |
+| 2.26 | a drum engine's `render` gets its voice's pitch |
+| 2.27 | an LFO type's page on the drum's T4 too |
+| 2.28 | `opus_stats`, `opus_page_dim` |
+| 2.29 | `opus_frames_late` |
+| 2.30 | `uses fn_hold`: FN held alone as a control |
+
+api.md's Core versions has the same table with each service's section.
 
 The build does not check this line against the functions the plugin calls: a plugin that calls a newer function than
 its `core` line says is still refused on an older core, but with "needs NAME" instead.
+
+### `priority`
+
+```
+priority  high
+```
+
+How the plugin ranks for fast memory (core 2.21 on): `high`, `normal` (without the line) or `low`. The core lends
+the OP-1's small fast memory to the plugins whose audio uses it (`opus_fast_lease`, an effect's or engine's state
+that may move) and, when there is not enough for all of them, takes it from a plugin of lower priority first. Give
+`high` only to a plugin whose sound costs much more without it (a reverb's tank, an engine's voices); most plugins
+need no line. api.md's Memory section has the details.
 
 ## Libraries
 
@@ -174,7 +210,10 @@ uses      INPUT [shift | noshift] [fn | nofn] [with KEY]
 
 A control the plugin takes. Every key or encoder a plugin acts on is declared, so two plugins never take the same
 one: a plugin whose control meets one a loaded plugin already takes is refused before any of its code runs, and the
-mods list names the other plugin ("shift white turn is taken by zoom"). The mods list shows each plugin's controls
+mods list names the other plugin ("shift white turn is taken by zoom"). Controls on a plugin's own type's page never
+clash with another plugin's of the same type: an engine's T1, an effect's T3 and an LFO type's T4 show only the
+sound's own one at a time, so two engines may both take shift + blue turn on `synth t1` (the type is the manifest's
+`adds engine|effect|lfo NAME` line; core 2.22 on). The mods list shows each plugin's controls
 (the green push on its row). The declaration does not route anything: the plugin's key and knob handlers see every
 event and must check the same conditions themselves.
 
@@ -190,8 +229,10 @@ event and must check the same conditions themselves.
 | `blue_push`, `green_push`, `white_push`, `orange_push` | an encoder's push |
 | `blue_turn`, `green_turn`, `white_turn`, `orange_turn` | an encoder's turn |
 | `keyboard` | the keyboard's note keys |
+| `fn_hold` | FN held alone, as the monitor and stock help use it (core 2.30) |
 
-`fn` and `help` are not inputs: FN (the help key) is the core's, used as a modifier. Shift is not an input either.
+`fn` and `help` are not inputs: FN (the help key) is the core's, used as a modifier; a plugin that acts on FN held
+alone declares `fn_hold` (core 2.30), so two such plugins never both draw over the page. Shift is not an input either.
 
 The words after the input, in any order, narrow the control:
 
@@ -334,13 +375,13 @@ cpu       user
 ```
 
 The only `cpu` line you write. It is for a manager: a plugin that runs effects the user chose (api.md, Managers). Its
-audio work is measured and shown but never switched off by the CPU budget: the user chose the effects and hears an
+audio work is measured and shown but never switched off by the CPU guard: the user chose the effects and hears an
 overload. Every other `cpu` line is the build's.
 
 The build writes a plugin's measured figure from `cpu.txt` in the plugin folder: a line `cycles N`, the plugin's worst
 audio block in CPU cycles (lines starting with `#` are comments). Without `cpu.txt` the build writes
-`cpu unmeasured`, and the core holds the plugin to a tenth of the audio block (58,052 cycles). A `cpu.txt` with no
-`cycles N` line is refused. How the CPU budget works: api.md, The CPU budget.
+`cpu unmeasured`, and the core measures the plugin against a tenth of the audio block (58,052 cycles). A `cpu.txt`
+with no `cycles N` line is refused. How the CPU budget works: api.md, The CPU budget.
 
 ## Notes for people
 
@@ -382,7 +423,7 @@ one yourself is refused ("deep is written by the build"), except `cpu user`.
 | `ram image N zero N` | the bytes of its code and data, and of its zero-filled data |
 | `imports N` | how many names it imports (the names themselves are in the file) |
 | `cpu N` | its CPU figure: the cycles measured in `cpu.txt` |
-| `cpu unmeasured` | no `cpu.txt`: the core holds it to a tenth of the audio block |
+| `cpu unmeasured` | no `cpu.txt`: measured against a tenth of the audio block |
 | `cpu user` | your own line, kept: a manager |
 | `cpu 0` | a code-free plugin |
 
@@ -424,7 +465,7 @@ after it) and checks everything before any code runs. A refused plugin shows the
 | `needs a plugin that needs it` | plugins needing each other in a loop |
 | `fn shift white turn is taken by NAME` | a control clashes with a loaded plugin's |
 | `needs NAME` | it calls a function the core does not have |
-| `not loaded: no room`, `not loaded: too many plugins` | no memory left, or 30 plugins already loaded |
+| `not loaded: no room`, `not loaded: no room for its part` | no memory left (there is no fixed count of plugins: memory and the CPU are the limits) |
 | `place NAME is taken` (and the other place messages) | see [Places](#places) |
 | `failed to start (-N)` | its `opl_init` returned -N |
 | `skipped: crashed` | it crashed the OP-1 last time; skipped until its file changes (developer mode loads it) |
@@ -487,17 +528,19 @@ opmod     1
 id        opus.outatime
 name      Outatime
 author    opus
-version   1.0.0
-core      2.4
+version   1.4.3
+core      2.21
+priority  high
 adds      engine outatime
 uses      blue_turn shift synth t1 "spread: the arms detune"
 uses      green_turn shift synth t1 "tone"
 uses      white_turn shift synth t1 "flux: the ensemble"
-uses      orange_turn shift synth t1 "nothing under shift"
+uses      orange_turn shift synth t1 "the overdrive type"
 setting   drive off,on off "always driving"
 ```
 
-`core 2.4` because it calls `opus_clock`. Its plain turns on T1 stay the OS's (they turn knobs 0-3); its engine's
+`core 2.21` because it leases fast memory for its wave tables (`opus_fast_lease`), and `priority high` so it keeps
+that memory when other plugins want it too (the clock it uses, `opus_clock`, came in 2.4). Its plain turns on T1 stay the OS's (they turn knobs 0-3); its engine's
 `turn` handler takes the shifted ones and sets its other knobs with `opus_engine_knob_set`, so it declares them, and
 no other plugin takes shift + an encoder on the synth's T1.
 

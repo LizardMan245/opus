@@ -92,13 +92,14 @@ python plugin_tool.py show build/hello.opmod
 The hello plugin draws its level on the right of the mods list while its row is selected; turn green to change it.
 
 **If something goes wrong:** a plugin that crashes the OP-1 is left out at the next start ("skipped: crashed";
-outside developer mode), and a new file or a **white** push on its row tries it again. Holding **Stop** while
-switching the OP-1 on starts it with no plugins at all; then delete the plugin from the mods folder in disk mode.
+outside developer mode) and shows as off; a new file, or turning **orange** on its row to switch it on again, tries
+it again. Holding **Stop** while switching the OP-1 on starts it with no plugins at all; then delete the plugin from
+the mods folder in disk mode.
 Nothing a plugin does can touch te-boot, the OP-1's update and recovery mode: you can always install Opus again
 (hold **COM** while switching on).
 
-**Reading a crash:** after a crash, the next start writes a crash log, and disk mode shows it in the **crash** folder
-on the USB disk (`/crash/N.txt`, the last eight; delete one there and it is gone from the OP-1 too). Its first lines
+**Reading a crash:** after a crash, the next start writes a crash log, and disk mode shows it in the **logs** folder
+on the USB disk (`/logs/N.txt`, the last eight; delete one there and it is gone from the OP-1 too). Its first lines
 say what stopped the OP-1 (the OS's assert, or the processor's exception) and which plugins were loaded; the rest is
 the whole record. `python tools/crashlog.py N.txt` reads it: every address in a plugin shows as `id+offset`, and
 `--plugin ID=build/NAME.build/plugin_0.elf` (your build's linked file) names your plugin's functions there. Attach the

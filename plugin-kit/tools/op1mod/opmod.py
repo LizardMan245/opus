@@ -20,6 +20,14 @@ Branches inside the image are relative and need nothing; a branch from the image
 with the image, so it is the one relative kind the loader writes.  Anything else that points into
 the image or at an import (a 16-bit sign-extended immediate holding an address, a 2-byte data word) is
 refused: the image could not be moved.
+
+The zero fill apart (2026-11-02, dev 105): an address whose symbol lies in `.zero` is marked
+(the name ZERO, bit 30 in the file), so the loader may put the zero fill somewhere else than right after the image
+(a plugin near the OS's code for its places, its big buffer in the far pool). Its value stays the offset as if the
+zero fill followed the image (the image's size, the alignment's padding, the offset in `.zero`), so a loader that
+keeps them together needs nothing new. The mark follows the symbol's section, never the address it points at: the
+end of an array that is the image's last (`p < arr + N`) is the zero fill's first byte. The second link puts `.zero`
+ZERO_GAP further than the image moves, so a mark missing or wrong fails the byte-for-byte check.
 """
 
 import struct
@@ -27,6 +35,9 @@ import struct
 KIND = {0x12: 'word', 0x06: 'lo', 0x07: 'hi', 0x0A: 'call', 0x09: 'call', 0x0D: 'call', 0x0E: 'call'}
 PCREL = {0x01, 0x03, 0x04, 0x08, 0x09, 0x0A, 0x0D, 0x0E, 0x13}   # relative: nothing when inside the image
 SHN_ABS = 0xFFF1
+ZERO = ''                  # a relocation's name when its target lies in the zero fill: falsy, so a reader that only
+                           # knows imports and own addresses takes it as an own address (right while they are together)
+ZERO_GAP = 0x00351000      # the second link's .zero beyond where it would follow the image: both halves differ
 
 
 class OpmodError(Exception):
@@ -41,9 +52,10 @@ def _elf(data):
     shentsize, shnum, shstrndx = struct.unpack_from('<HHH', data, 0x2E)
     secs = []
     for i in range(shnum):
-        name, typ, _, addr, off, size, link, info, _, entsize = struct.unpack_from('<10I', data, shoff + i * shentsize)
+        name, typ, _, addr, off, size, link, info, align, entsize = struct.unpack_from('<10I', data,
+                                                                                       shoff + i * shentsize)
         secs.append({'name': name, 'type': typ, 'addr': addr, 'offset': off, 'size': size, 'link': link,
-                     'info': info, 'entsize': entsize})
+                     'info': info, 'align': align, 'entsize': entsize})
     strtab = secs[shstrndx]
 
     def cstr(sec, off):
@@ -61,9 +73,34 @@ def _elf(data):
     return secs, syms
 
 
+def _zero_layout(byname, base, size):
+    """-> (zero, pad, the .zero section or None): the zero fill's bytes as the file gives them (the alignment's padding
+    after the image, then .zero; an aligned buffer at an odd address hung the OS, so the loader zeroes the
+    padding too), counted as if .zero followed the image at an aligned base, whichever link this is."""
+    zsec = byname.get('.zero')
+    if not zsec or not zsec['size']:
+        return 0, 0, None
+    align = max(zsec['align'], 1)
+    pad = -size % align
+    return pad + zsec['size'], pad, zsec
+
+
+def zero_at(elf_path):
+    """-> where the zero fill's offset 0 (the image's size in the file's terms) lies in this link: the address a
+    loader keeping them apart gives relocate() as zero_at."""
+    with open(elf_path, 'rb') as f:
+        data = f.read()
+    secs, _ = _elf(data)
+    byname = {s['name']: s for s in secs}
+    img = byname['.image']
+    _, pad, zsec = _zero_layout(byname, img['addr'], img['size'])
+    return zsec['addr'] - pad if zsec else img['addr'] + img['size']
+
+
 def relocations(elf_path, section='.image'):
-    """-> (base, image bytes, zero fill, [(site, kind, import name or None, value)]): value is the offset
-    in the image an own address points at (addend included), or an import's addend."""
+    """-> (base, image bytes, zero fill, [(site, kind, name, value)]): name an import's, ZERO for an address in the
+    zero fill or None for one in the image; value the offset an own address points at (addend included; in the zero
+    fill as if it followed the image), or an import's addend."""
     with open(elf_path, 'rb') as f:
         data = f.read()
     secs, syms = _elf(data)
@@ -73,11 +110,10 @@ def relocations(elf_path, section='.image'):
         raise OpmodError(f'{elf_path}: no {section} section')
     base, size = img['addr'], img['size']
     image = data[img['offset']:img['offset'] + size]
-    zsec = byname.get('.zero')
-    # the zero fill runs from the image's end to the zero section's end: an aligned buffer in it (a file system
-    # buffer at an odd address hung the OS) leaves the linker's padding before it, which the loader zeroes too
-    end = zsec['addr'] + zsec['size'] if zsec and zsec['size'] else base + size
-    zero = end - (base + size)
+    zero, pad, zsec = _zero_layout(byname, base, size)
+    zi = secs.index(zsec) if zsec else -1
+    zlo = zsec['addr'] - pad if zsec else base + size      # the zero fill's start in this link
+    end = base + size + zero                               # the file's end of image and zero fill together
     out = []
     for s in secs:
         if s['type'] != 4 or secs[s['info']] is not img:     # SHT_RELA for the image
@@ -87,10 +123,14 @@ def relocations(elf_path, section='.image'):
             typ, symi = r_info & 0xFF, r_info >> 8
             name, value, shndx = syms[symi]
             target = value + addend
-            imported = shndx == SHN_ABS and not base <= target < end
+            in_zero = shndx == zi
+            imported = shndx == SHN_ABS and not (base <= target < base + size or zlo <= target < zlo + zero)
             site = r_offset - base
             if not 0 <= site < size:
                 raise OpmodError(f'relocation at 0x{r_offset:08x} outside the image')
+            if in_zero and (typ in PCREL or KIND.get(typ) == 'call'):
+                raise OpmodError(f'image+0x{site:x}: a relative reference into the zero fill ({name}): '
+                                 'it could not lie apart from the image')
             if typ in PCREL and not imported:
                 continue                                     # inside the image: moves with it
             kind = KIND.get(typ)
@@ -98,21 +138,27 @@ def relocations(elf_path, section='.image'):
                 raise OpmodError(f'relocation type 0x{typ:02x} at image+0x{site:x} ({name}): cannot be moved')
             if kind == 'call' and not imported:
                 continue
+            own = size + (target - zlo) if in_zero else target - base   # the file's offset (together)
             if imported:
                 out.append((site, kind, name.lstrip('_'), addend))
-            elif base <= target <= end:
-                out.append((site, kind, None, target - base))
+            elif 0 <= own <= size + zero:
+                out.append((site, kind, ZERO if in_zero else None, own))
             else:
                 raise OpmodError(f'image+0x{site:x} points at 0x{target:08x}, outside the image ({name}): '
                                  'an address the build did not give as an import')
-    return base, image, zero, sorted(out)
+    if zsec and zsec['addr'] - (base + size) not in (pad, pad + ZERO_GAP):   # the first link's, the second's
+        raise OpmodError(f'{elf_path}: .zero at 0x{zsec["addr"]:08x}, not where its alignment '
+                         f'({zsec["align"]}) puts it after the image (over 64 bytes: not yet)')
+    return base, image, zero, sorted(out, key=lambda r: (r[0], r[1], r[2] or '', r[3]))
 
 
-def relocate(image, base, relocs, imports):
-    """The loader: the image as it must stand at `base`, every import at imports[name]."""
+def relocate(image, base, relocs, imports, zero_at=None):
+    """The loader: the image as it must stand at `base`, every import at imports[name]; the zero fill at zero_at
+    (its offset 0, the image's size in the file's terms), or right after the image when None."""
     b = bytearray(image)
+    zdelta = (zero_at - len(image)) if zero_at is not None else base
     for site, kind, name, value in relocs:
-        full = (imports[name] if name else base) + value
+        full = (imports[name] if name else zdelta if name == ZERO else base) + value
         if kind == 'word':
             struct.pack_into('<I', b, site, full & 0xFFFFFFFF)
         elif kind == 'lo':
@@ -140,7 +186,7 @@ def check_two_bases(elf_a, elf_b, imports):
         raise OpmodError('both links at one base')
     if (len(img_a), zero_a, rel_a) != (len(img_b), zero_b, rel_b):
         raise OpmodError('the two links differ in size or relocations')
-    moved = relocate(img_a, base_b, rel_a, imports)
+    moved = relocate(img_a, base_b, rel_a, imports, zero_at(elf_b))   # the second's zero fill apart (ZERO_GAP)
     if moved != img_b:
         first = next(i for i in range(len(img_b)) if moved[i] != img_b[i])
         raise OpmodError(f'relocated image differs from the second link at image+0x{first:x}')
@@ -152,7 +198,7 @@ def check_two_bases(elf_a, elf_b, imports):
         raise OpmodError(f'the two links differ outside every relocation, first at image+0x{stray[0]:x}')
     kinds = {}
     for _, kind, name, _ in rel_a:
-        key = kind + (' import' if name else '')
+        key = kind + (' import' if name else ' zero' if name == ZERO else '')
         kinds[key] = kinds.get(key, 0) + 1
     return rel_a, (f'{len(img_a)} bytes, {zero_a} zero fill, {len(rel_a)} relocations ('
                    + ', '.join(f'{n} {k}' for k, n in sorted(kinds.items())) + ')')
@@ -162,6 +208,7 @@ LINK_SCRIPT = """SECTIONS
 {
     . = 0x%08X;
     .image : { *(.text .text.*) *(.rodata .rodata.*) *(.data .data.*) }
+    . = . + 0x%08X;
     .zero (NOLOAD) : { *(.bss .bss.*) *(COMMON) *(.far) }
     /DISCARD/ : { *(.comment) *(.eh_frame) *(.note.*) *(.debug*) }
 }
@@ -206,7 +253,7 @@ def link_two_bases(tc, objs, out_dir, tag):
     for n, base in enumerate(BASES):
         script = os.path.join(out_dir, f'{tag}_{n}.ld')
         with open(script, 'w') as f:
-            f.write(LINK_SCRIPT % base)
+            f.write(LINK_SCRIPT % (base, ZERO_GAP if n else 0))   # the second: .zero apart (the marks checked)
         elf = os.path.join(out_dir, f'{tag}_{n}.elf')
         syms = [f'--defsym={s}=0x{import_address(n, i):08X}' for i, s in enumerate(imports)]
         run([tool(tc, 'ld'), '-q', '--orphan-handling=error', '-T', script, '-o', elf] + syms + list(objs) + [libgcc])

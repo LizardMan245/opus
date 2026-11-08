@@ -34,10 +34,12 @@ voice, the `pre_fx`, `post_fx`, `post_master` and `block_end` events):
 ## CPU: measured and held
 
 Every plugin's audio work is timed by the core, block by block. The manifest's `cpu` line (written by the build from
-the plugin folder's `cpu.txt`) is its figure: its worst block in cycles. **A plugin that goes 25 % over its figure in
-8 of the last 64 blocks is switched off for the rest of that start**: an effect passes the sound dry, an engine goes
-silent, and the mods list says "switched off: N of M cycles". The next start tries it again. A plugin with no figure
-is held to a tenth of the block (58,052 cycles). Developer mode never switches anything off.
+the plugin folder's `cpu.txt`) is its figure: its worst block in cycles, shown beside what it really takes (a plugin
+with no figure is measured against a tenth of the block, 58,052 cycles). Going over it is shown, not punished. What
+counts is the audio: **a few blocks late within about two seconds bring up a warning naming the plugin that spiked;
+50 switch off the heaviest plugin for the rest of that start** (an effect passes the sound dry, an engine goes silent,
+a notice says so), and a plugin whose one block takes a whole block alone is switched off at once. The next start tries
+it again. Developer mode never switches anything off.
 
 **Measure yours on the OP-1:** developer mode on, play the heaviest case (all voices, chords, its heaviest settings,
 the other plugins you expect beside it), then the details of its row in the mods list (orange push) show
@@ -104,7 +106,8 @@ power switch cannot leave it half done.
 ## When things go wrong
 
 - A plugin that crashes the OP-1 is named by the core's crash record and **left out at the next start**
-  ("skipped: crashed"); a changed file or a white push on its row tries it again. Developer mode turns this off.
+  ("skipped: crashed"); a changed file, or switching it back on with orange on its row, tries it again. Developer
+  mode turns this off.
 - **Holding Stop while switching on** starts with no plugins at all.
 - te-boot, the OP-1's update and recovery mode, is never touched: Opus can always be installed again.
 - **Deep plugins** (`fw_*` calls, `place` lines patching the firmware's code, raw addresses) work on firmware #246's

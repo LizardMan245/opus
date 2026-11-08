@@ -10,6 +10,14 @@
 typedef void *fw_bind_t(void *page, const char *name, int align);
 extern fw_bind_t fw_bind;
 
+/* fw_heap_malloc: heap_malloc: the C runtime's heap N (0 the low SDRAM heap, bank 0; 1 the
+ * samplers', full by design), 0x01AA0318. The C heaps' one lock (a VDK unscheduled region:
+ * thread level only; from an interrupt it stops the OS), first fit from the heap's rover, else
+ * its top grows (never down); 0 when it does not fit, no message. Under Opus heap 0 ends at
+ * 0x00E00000 (sqlitemem.hooks). Opus's bank 0 arena (loader.c, 2026-11-05). */
+typedef void *fw_heap_malloc_t(int heap, unsigned bytes);
+extern fw_heap_malloc_t fw_heap_malloc;
+
 /* fw_remove_node: Screen.cpp removeNode, 0x01A3B7D0. Removes a page's named element; asserts
  * (Screen.cpp:154-166) when the page or the element is missing. Return value not established. */
 typedef void fw_remove_node_t(void *page, const char *name);
@@ -196,6 +204,11 @@ extern fw_screen_draw_t fw_screen_draw;
  * made. The OS passes mode 0 (db2) or 0x4180 (tar). Thread context. */
 typedef int fw_yaffs_mkdir_t(const char *path, int mode);
 extern fw_yaffs_mkdir_t fw_yaffs_mkdir;
+
+/* fw_yaffs_rmdir: yaffsfs.c yaffs_rmdir, 0x01A9AAD0. Removes an empty folder: 0, or -1 (not
+ * there, not empty, not a folder). Thread context. */
+typedef int fw_yaffs_rmdir_t(const char *path);
+extern fw_yaffs_rmdir_t fw_yaffs_rmdir;
 
 /* fw_yaffs_access: yaffsfs.c yaffs_access, 0x01A9A6B0. 0 when the path exists (amode 0), else
  * -1; ".." is resolved. Thread context. */
@@ -1100,5 +1113,60 @@ extern fw_list_child_t fw_list_child;
  * synth_N.raw from the preset's .raw (0x01940950), the sample column's (0x01940250). */
 typedef void fw_file_copy_t(const void *dst, const void *src);
 extern fw_file_copy_t fw_file_copy;
+
+/* fw_f_rename: ff.c f_rename, 0x0199CBEC. 8 (FR_EXIST) when the new name exists: FatFs R0.08
+ * replaces nothing (remove the old first); both paths on the one volume, mounted. ff.c order:
+ * after f_mkdir. */
+typedef int fw_f_rename_t(const char *path_old, const char *path_new);
+extern fw_f_rename_t fw_f_rename;
+
+/* fw_vdk_create_semaphore: VDK CreateSemaphore, 0xFFA0AD80. A counting semaphore's id; db2
+ * makes its lock with (1, 1, 0, 0). Thread context. */
+typedef int fw_vdk_create_semaphore_t(int initial, int max, unsigned delay, unsigned period);
+extern fw_vdk_create_semaphore_t fw_vdk_create_semaphore;
+
+/* fw_vdk_pend_semaphore: VDK PendSemaphore, 0xFFA0B6E8. Waits for the semaphore (timeout 0:
+ * for ever, as db2 does). Thread context only, never in an interrupt; not recursive. */
+typedef int fw_vdk_pend_semaphore_t(int sem, unsigned timeout);
+extern fw_vdk_pend_semaphore_t fw_vdk_pend_semaphore;
+
+/* fw_vdk_post_semaphore: VDK PostSemaphore, 0xFFA0B96C. */
+typedef void fw_vdk_post_semaphore_t(int sem);
+extern fw_vdk_post_semaphore_t fw_vdk_post_semaphore;
+
+/* fw_save_overlay_count: the save overlay counting, 0x01A3AAA0. Shows the save overlay with
+ * its clock's hand at counter (320 the start of one clockwise turn, 0 its end), the slot's
+ * number and the synth's or the drum's icon; the OS calls it every OP_Main pass of its
+ * countdown from 320 down. OP_Main. */
+typedef void fw_save_overlay_count_t(int slot, int counter, int is_synth);
+extern fw_save_overlay_count_t fw_save_overlay_count;
+
+/* fw_save_overlay_off: the save overlay hidden, 0x01A3AA58. The overlay off (the OS: a
+ * countdown cancelled). Plain stores: any thread. */
+typedef void fw_save_overlay_off_t(void);
+extern fw_save_overlay_off_t fw_save_overlay_off;
+
+/* fw_dbox_voice: dbox.cpp dbox::voice, 0x0197189C. dbox's voice i (0-11): its object at
+ * 0xFFB00000 + 0x48 i (L1), made on demand (dbox.cpp:264 asserts the range); the drum
+ * factory's case 9 calls it for each of the twelve, then dbox::set_voice (+0x14 = i). */
+typedef void *fw_dbox_voice_t(int i);
+extern fw_dbox_voice_t fw_dbox_voice;
+
+/* fw_drum_post_apply: keys::set_5030, 0x019C2BA0. */
+typedef void fw_drum_post_apply_t(int slot);
+extern fw_drum_post_apply_t fw_drum_post_apply;
+
+/* fw_drum_t1_screen: ScreenId.cpp (the drum chooser), 0x01A3BFDA. A drum engine number's T1
+ * screen id: 8 (the sampler drum) 0x10, 9 (dbox) 0x11; any other a fatal assert
+ * (ScreenId.cpp:74 no screen found for drum %i). */
+typedef int fw_drum_t1_screen_t(int engine);
+extern fw_drum_t1_screen_t fw_drum_t1_screen;
+
+/* fw_drum_list_pos: patch.cpp patch::drum_slot_type_id, 0x01A01FFE. The drum engine list's row
+ * to open on for drum slot (DrumController::shift_key_down, before the list's build):
+ * patch::drum_type_id of the slot's kit (dbox's row for any dbox kit); the synth's twin is
+ * fw_list_pos. */
+typedef int fw_drum_list_pos_t(int slot, char *found);
+extern fw_drum_list_pos_t fw_drum_list_pos;
 
 #endif
