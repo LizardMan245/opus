@@ -32,10 +32,10 @@ Opus is built so you can try it without risk and leave without losing anything.
 - **Coming from stock or Opus 1:** your sounds, presets and tape stay. Opus 1's sounds play with the starter pack in
   the mods folder. At the first start with beta 4, your saved presets move into files on the USB disk.
 - **Coming from op1r or Hundekraft:** to try Opus out, install it over them: your sounds, presets and tape stay, and so
-  do their plugin files. To switch for good, start clean: back up the disk, factory reset (te-boot's 7, which leaves
-  their plugin files), install Opus 2 and copy back the presets you want
-  ([the steps](https://opus-op1.pages.dev/#from-other)). Either way, their synths, effects and sequencers play with
-  the bridge.
+  do op1r's plugin files. Hundekraft's don't: it keeps them among the OP-1's own files, which every install replaces.
+  To switch for good, start clean: back up the disk, factory reset (te-boot's 7, which leaves op1r's plugin files),
+  install Opus 2 and copy back the presets you want ([the steps](https://opus-op1.pages.dev/#from-other)). Either way,
+  their synths, effects and sequencers play with the bridge: Hundekraft's `.knl` files go into `mods/bridge`.
 - **Your presets are files:** the `.aif` files in the disk's synth and drum folders. Add, change or remove them on the
   computer, and they're there as the OP-1 leaves disk mode.
 - **A plugin removed or switched off:** a sound that needs it is kept exactly as it is. Its engine's, effect's, LFO's
