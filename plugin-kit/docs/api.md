@@ -199,6 +199,7 @@ types section); `opus_page_text_centre`.
 - [Paths](#paths): lines and curves drawn by the OS's renderer
 - [Art](#art): SVG art on a page
 - [Pixels](#pixels): a page's own pixels, the panel's size
+- [3D line art: orbit3d](#3d-line-art-orbit3d): the library for 3D drawing on a page ([orbit3d.md](orbit3d.md))
 - [The clock](#the-clock)
 - [Firmware functions (`fw_*`)](#firmware-functions-fw_)
 - [Index](#index)
@@ -2730,6 +2731,15 @@ static void page(void)
     /* ... draw what moves ... */
 }
 ```
+
+## 3D line art: orbit3d
+
+Not a core call but a library plugin, `opus.orbit3d`, in the starter pack: 3D line art for a page in the look of an
+OP-1 plate (a camera, spheres that hide the lines behind them, constant line weights, a halo under lines in front),
+several inks, filled faces, a 2D overlay and a pixel font, drawn into the page's own pixels for a few hundred cycles
+a line. A plugin names it in its manifest (`needs opus.orbit3d 0.2.5`), includes `sdk/orbit3d.h` and calls its `o3_*`
+names inside a page's draw call. Every call, its numbers and costs: [orbit3d.md](orbit3d.md); the example:
+`examples/opus.globe`.
 
 ## The clock
 

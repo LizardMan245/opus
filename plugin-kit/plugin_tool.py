@@ -5,12 +5,16 @@
                                                            (default build/NAME.opmod)
     python plugin_tool.py show FILE.opmod                  the file read back as the core reads it
     python plugin_tool.py svg FILE.svg ...                 will the OP-1 draw this page art, and draw it as meant?
+    python plugin_tool.py doctor                           is this computer ready: Python, the compiler (run it first)
 
-The Blackfin compiler (bfin-elf-gcc and binutils) is found through OP1_BFIN_TOOLCHAIN, a bfin-toolchain folder
-beside the kit's, or the PATH (docs/getting-started.md). Standard library only; Python 3.8 or later.
+The Blackfin compiler (bfin-elf-gcc and binutils) is set up once per computer, never for each plugin. It is found
+through OP1_BFIN_TOOLCHAIN, a bfin-toolchain folder beside the kit's, the PATH, or the folders the guide builds it
+into (docs/getting-started.md). A new plugin is a new folder in this kit's plugins/ (`new`), not a new copy of the
+kit. Standard library only; Python 3.8 or later.
 """
 import argparse
 import os
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -66,6 +70,63 @@ def cmd_svg(a):
     return 1 if bad else 0
 
 
+def strays(kit):
+    """Compilers lying where the lookup does not go: bfin-toolchain folders beside other copies of the kit (in the
+    kit's parent and grandparent and their folders, the home folder and its folders). One level deep each: fast, no
+    disk crawl."""
+    import build
+    out, roots = [], []
+    home = os.path.expanduser('~')
+    for root in (os.path.dirname(kit), os.path.dirname(os.path.dirname(kit)), home):
+        if root and os.path.isdir(root) and root not in roots:
+            roots.append(root)
+    for root in roots:
+        cands = [os.path.join(root, 'bfin-toolchain')]
+        try:
+            cands += [os.path.join(root, d, 'bfin-toolchain') for d in sorted(os.listdir(root))]
+            cands += [os.path.join(root, d, 'linux-install') for d in sorted(os.listdir(root)) if 'bfin' in d.lower()]
+        except OSError:
+            continue
+        for c in cands:
+            if os.path.exists(build.tool(c, 'gcc')) and os.path.normcase(c) not in [os.path.normcase(o) for o in out]:
+                out.append(c)
+    return out
+
+
+def cmd_doctor(a):
+    """Is this computer ready to build plugins? Python, and where the compiler is (or where one lies unused)."""
+    import build
+    ok = sys.version_info >= (3, 8)
+    print(f'python {sys.version.split()[0]}: ' + ('ok' if ok else 'too old: the kit needs 3.8 or later'))
+    print('the Blackfin compiler, looked for in order:')
+    for why, tc in build.toolchain_places():
+        print(f'  {why}: {tc}: ' + ('found' if os.path.exists(build.tool(tc, "gcc")) else 'no'))
+    try:
+        tc = build.toolchain()
+    except BuildError as e:
+        others = [s for s in strays(plugin.REPO)]
+        if others:
+            print('compilers lying elsewhere on this computer (point the kit at one; do not build another):')
+            for s in others:
+                print(f'  {s}')
+            how = 'setx OP1_BFIN_TOOLCHAIN ' if os.name == 'nt' else 'export OP1_BFIN_TOOLCHAIN='
+            print(f'then: {how}{others[0]}   (a new terminal sees it)')
+        print(f'NOT READY: {e}')
+        return 1
+    try:
+        version = subprocess.run([build.tool(tc, 'gcc'), '--version'], capture_output=True, text=True,
+                                 timeout=30).stdout.splitlines()[0]
+    except (OSError, subprocess.SubprocessError, IndexError):
+        print(f'NOT READY: {build.tool(tc, "gcc")} is there but does not run')
+        return 1
+    print(f'compiler: {tc} ({version})')
+    if '13.3.0' not in version:
+        print('  note: Opus is built with GCC 13.3.0; another version works but may give other code')
+    print('READY: build plugins (python plugin_tool.py build plugins/ID). The compiler is set up: never build it '
+          'again on this computer.')
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -79,9 +140,11 @@ def main(argv=None):
     s.add_argument('file')
     v = sub.add_parser('svg', help='check page art for the OP-1')
     v.add_argument('files', nargs='+')
+    sub.add_parser('doctor', help='is this computer ready: Python, the compiler (run it first)')
     a = ap.parse_args(argv)
     try:
-        return {'new': cmd_new, 'build': cmd_build, 'show': cmd_show, 'svg': cmd_svg}[a.cmd](a) or 0
+        return {'new': cmd_new, 'build': cmd_build, 'show': cmd_show, 'svg': cmd_svg,
+                'doctor': cmd_doctor}[a.cmd](a) or 0
     except (plugin.PluginError, BuildError) as e:
         print(f'REFUSED: {e}')
         return 2

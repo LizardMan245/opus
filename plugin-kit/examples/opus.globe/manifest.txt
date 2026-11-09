@@ -1,0 +1,12 @@
+# opus.globe: the kit's example of the orbit3d library (a plugin that draws 3D line art on its page). FN + orange push
+# opens a page with a turning globe in the look of an OP-1 plate: blue turns it faster or slower, green tilts it, white
+# zooms; FN + orange push again, or any other key, closes it. It needs opus.orbit3d in the OP-1's mods folder.
+opmod     1
+id        opus.globe
+name      Globe
+author    opus
+version   1.0.0
+core      2.24
+needs     opus.orbit3d 0.2.5
+adds      a globe page, an orbit3d example
+uses      orange_push fn "the globe page"

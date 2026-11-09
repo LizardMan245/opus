@@ -7,7 +7,19 @@ From nothing to your own plugin running on the OP-1. You need:
 - the **Blackfin compiler**: GCC and binutils for `bfin-elf`, the OP-1's processor (an Analog Devices BF524). The
   kit builds it from GNU's own sources (below).
 
-## 1. The Blackfin compiler
+## 1. The Blackfin compiler (once per computer)
+
+**Check first:**
+
+```
+python plugin_tool.py doctor
+```
+
+If it says `READY`, skip to section 2: the compiler is already set up on this computer. If it says `NOT READY` but
+lists a compiler elsewhere (beside another copy of the kit), point the kit at that one with the command it prints.
+The compiler is built once per computer and serves every plugin you ever make: a new plugin is a new folder in this
+kit (`plugin_tool.py new`, section 2), never a new copy of the kit and never a new compiler. Only a computer that
+never had one builds it, as below; run again, the script keeps what it already built (`FORCE=1` builds it anew).
 
 `tools/toolchain/build-bfin-toolchain.sh` downloads binutils 2.38 and GCC 13.3.0 from ftp.gnu.org, checks their
 signatures against the GNU keyring, and builds a C compiler for `bfin-elf`. It runs on Ubuntu (or Debian) and takes

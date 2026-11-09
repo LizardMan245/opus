@@ -21,18 +21,27 @@ run the OP-1, they can. So:
 
 ## The kit
 
-- `plugin_tool.py new AUTHOR.NAME` makes a working plugin folder in `plugins/`; `build DIR` writes
+- `plugin_tool.py doctor` says whether this computer can build plugins (Python, and where the compiler is);
+  `new AUTHOR.NAME` makes a working plugin folder in `plugins/`; `build DIR` writes
   `build/NAME.opmod`; `show FILE.opmod` reads it back as the core will; `svg FILE.svg` checks page art against what
   the OP-1's own SVG parser draws (run it on every SVG a plugin ships). A failure prints `REFUSED:` and why.
 - `docs/getting-started.md` (the compiler, the device steps), `docs/rules.md` (the rules below in full),
   `docs/api.md` (every `opus_*` call), `docs/manifest.md` (every manifest line), `docs/sharing.md` (the checks).
-- `sdk/opus_plugin.h` (the core's calls) and `sdk/op1fw.h` (the firmware's own functions, `fw_*`).
+- `sdk/opus_plugin.h` (the core's calls), `sdk/op1fw.h` (the firmware's own functions, `fw_*`) and `sdk/orbit3d.h`
+  (the orbit3d library's 3D drawing, `o3_*`, for a plugin with `needs opus.orbit3d`: `docs/orbit3d.md`).
 - `examples/`: four real plugins from Opus 2's starter pack: `opus.halloween` (a theme, no code), `opus.zoom` (a
   tape tool), `opus.bitcrush` (an effect with its own page), `opus.outatime` (a synth engine whose page is an SVG
-  design with live instruments drawn over it: the way to build a designed screen). Start from the closest one or from
-  `new`.
+  design with live instruments drawn over it: the way to build a designed screen); and `opus.globe`, a quick page
+  drawn in 3D with orbit3d (the way to draw 3D line art). Start from the closest one or from `new`.
 
 ## How to work
+
+**First, in every session: `python plugin_tool.py doctor`.** The Blackfin compiler is set up **once per computer**,
+never for each plugin. If doctor says `READY`, the compiler is there: never run
+`tools/toolchain/build-bfin-toolchain.sh`. If it says `NOT READY` but lists a compiler elsewhere on the computer
+(beside another copy of the kit), point the kit at that one: doctor prints the command. Build the compiler only on a
+computer that never had one, once, and tell the person first that it is a long build (`docs/getting-started.md`,
+section 1). A new plugin is a new folder in this same kit (`plugin_tool.py new`), never a new copy of the kit.
 
 1. **Pin the plugin down first.** What kind is it (an effect, a synth engine, a page, a tool on a key or encoder, a
    theme)? Which core services does it need? Find each call in `docs/api.md` before you plan around it. If what they

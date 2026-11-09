@@ -216,6 +216,9 @@ call. They declare them from the library's own header and name the library in a 
 parted by spaces; 128 exported names in all, across every loaded library. Needs code (a code-free plugin cannot
 export).
 
+Opus's own library in the starter pack is **orbit3d** (`needs opus.orbit3d 0.2.5`, header `sdk/orbit3d.h`): 3D line
+art for a plugin's page. Its calls: [orbit3d.md](orbit3d.md); its example: `examples/opus.globe`.
+
 ## Controls
 
 ### `uses` (repeatable, up to 12)

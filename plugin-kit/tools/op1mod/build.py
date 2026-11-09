@@ -43,21 +43,61 @@ def write_names(path):
             f.write(f'{{ "{name}", 0x{addr:08X}u }},\n')
 
 
-def toolchain(path=None):
-    """Directory holding bin/bfin-elf-*: argument, $OP1_BFIN_TOOLCHAIN, ../bfin-toolchain, or the one on the PATH
-    (Linux and macOS too: the authors' kit)."""
-    tc = path or os.environ.get('OP1_BFIN_TOOLCHAIN') or DEFAULT_TOOLCHAIN
-    if not os.path.exists(tool(tc, 'gcc')) and not path and not os.environ.get('OP1_BFIN_TOOLCHAIN'):
-        found = shutil.which('bfin-elf-gcc')
+ONCE = ('The compiler is set up once per computer, never for each plugin: if this computer has it (built for another '
+        'kit folder, or where the guide builds it), set OP1_BFIN_TOOLCHAIN to the folder that holds its bin/ '
+        '(`python plugin_tool.py doctor` lists what it finds). Only a computer that never had it builds it, once: '
+        'docs/getting-started.md, section 1.')
+
+
+def toolchain_places():
+    """Where a Blackfin compiler is looked for, in order, as (why, the folder holding bin/): $OP1_BFIN_TOOLCHAIN,
+    bfin-toolchain beside the repository (or the kit), the PATH, and the folders the authors' kit's guide builds it
+    into, so a compiler built once is found from any kit folder."""
+    places = []
+    env = os.environ.get('OP1_BFIN_TOOLCHAIN')
+    if env:
+        places.append(('OP1_BFIN_TOOLCHAIN', env))
+    places.append(('beside the kit', DEFAULT_TOOLCHAIN))
+    for exe in ('bfin-elf-gcc', 'bfin-elf-gcc.exe'):
+        found = shutil.which(exe)
         if found:
-            tc = os.path.dirname(os.path.dirname(os.path.realpath(found)))
-    if not os.path.exists(tool(tc, 'gcc')):
-        raise BuildError(f'no Blackfin toolchain at {tc}: build it with tools/toolchain/build-bfin-toolchain.sh')
-    return tc
+            places.append(('the PATH', os.path.dirname(os.path.dirname(os.path.realpath(found)))))
+            break
+    if os.name == 'nt':
+        places.append(("the guide's Windows folder", 'C:\\bfin-toolchain'))
+    else:
+        places.append(("the guide's Windows folder, from WSL", '/mnt/c/bfin-toolchain'))
+        places.append(("the guide's Linux build", os.path.join(os.path.expanduser('~'), 'bfin-build', 'linux-install')))
+    return places
+
+
+def toolchain(path=None):
+    """Directory holding bin/bfin-elf-*: the argument, else the first of toolchain_places() that has the compiler
+    (Linux and macOS too: the authors' kit). $OP1_BFIN_TOOLCHAIN naming a folder without one is an error, not
+    passed over: it is what the person asked for."""
+    if path:
+        if not os.path.exists(tool(path, 'gcc')):
+            raise BuildError(f'no Blackfin compiler in {path} (no bin/bfin-elf-gcc)')
+        return path
+    env = os.environ.get('OP1_BFIN_TOOLCHAIN')
+    if env and not os.path.exists(tool(env, 'gcc')):
+        raise BuildError(f'OP1_BFIN_TOOLCHAIN is {env}, but that folder has no bin/bfin-elf-gcc: point it at the '
+                         f'folder that holds the compiler\'s bin/. {ONCE}')
+    places = toolchain_places()
+    for _, tc in places:
+        if os.path.exists(tool(tc, 'gcc')):
+            return tc
+    looked = '; '.join(f'{why}: {tc}' for why, tc in places)
+    raise BuildError(f'no Blackfin compiler found (looked in {looked}). {ONCE}')
 
 
 def tool(tc, name):
-    return os.path.join(tc, 'bin', f'bfin-elf-{name}' + ('.exe' if os.name == 'nt' else ''))
+    """bin/bfin-elf-NAME in tc: the .exe on Windows; elsewhere the plain one, or the .exe when only that is there (WSL
+    runs the compiler the guide builds for Windows)."""
+    base = os.path.join(tc, 'bin', f'bfin-elf-{name}')
+    if os.name == 'nt':
+        return base + '.exe'
+    return base + '.exe' if not os.path.exists(base) and os.path.exists(base + '.exe') else base
 
 
 def run(cmd, out_path=None):
