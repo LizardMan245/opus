@@ -3,6 +3,18 @@
 A plugin is compiled C (and, if you like, Blackfin assembly) that runs inside the OP-1's own firmware, on its one
 processor, next to the OS and the user's music. The core enforces some of these rules itself; the others are yours.
 
+## Contents
+
+- [Where your code runs](#where-your-code-runs)
+- [The audio block](#the-audio-block)
+- [CPU: measured and held](#cpu-measured-and-held)
+- [Memory](#memory)
+- [The screen](#the-screen)
+- [Controls](#controls)
+- [Files and folders](#files-and-folders)
+- [Names](#names)
+- [When things go wrong](#when-things-go-wrong)
+
 ## Where your code runs
 
 The OS has several threads, and each of your handlers runs on one of them ([api.md](api.md) says which for every

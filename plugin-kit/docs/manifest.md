@@ -8,6 +8,25 @@ newer core, and the mods list says why.
 
 This page lists every line a manifest may hold. The C side is in [api.md](api.md).
 
+## Contents
+
+- [A first example](#a-first-example)
+- [The format](#the-format)
+- [All keys](#all-keys)
+- [The required keys](#the-required-keys): `opmod`, `id`, `name`, `author`, `version`, `core`, `priority`
+- [Libraries](#libraries): `needs`, `exports`
+- [Controls](#controls): `uses`
+- [Settings](#settings): `setting`
+- [Themes](#themes): `theme`
+- [Places](#places): `place`
+- [CPU](#cpu): `cpu user`
+- [Notes for people](#notes-for-people): `adds`, `checked`, `breaks`, `removes`, `replace`, `pack`
+- [Lines the build writes](#lines-the-build-writes)
+- [Other keys](#other-keys)
+- [Code-free plugins](#code-free-plugins)
+- [At load: what the mods list says](#at-load-what-the-mods-list-says)
+- [The kit's examples](#the-kits-examples): `examples/opus.halloween`, `examples/opus.zoom`, `examples/opus.bitcrush`, `examples/opus.outatime`
+
 ## A first example
 
 The kit's `examples/opus.zoom`:
