@@ -57,6 +57,11 @@ void opus_on_frame(struct opl_self *self, void (*fn)(unsigned short *buf));
  * opus_page_* names; what the OS draws there covers it. For what goes beside or over an OS screen yet under its
  * popups (the effect list's second column, an effect page's dots). The display thread. */
 void opus_on_frame_under(struct opl_self *self, void (*fn)(unsigned short *buf));
+/* The top layer (core 2.35): after every frame handler, the core's and the plugins', whatever their load order: over
+ * everything the frame has (the monitor's overlay, which must stay above a chord's name or a toast). The display
+ * thread; the opus_page_* names as in a frame handler. For an overlay that belongs above all, not for a plugin's
+ * ordinary drawing. */
+void opus_on_frame_top(struct opl_self *self, void (*fn)(unsigned short *buf));
 void opus_on_main_pass(struct opl_self *self, void (*fn)(void));
 /* After the OS's own handling (2026-10-21): every key and turn the key and knob handlers saw, taken or not (a
  * taken one the OS never saw), with the delta the OS had (the KeyHandler thread); the clip queue's run once per
@@ -292,8 +297,8 @@ int opus_panel_size(int *cols);
 #define OPUS_RED        OPUS_COLOR_ALERT
 #define OPUS_BLACK      OPUS_COLOR_BACK
 void opus_on_panel(struct opl_self *self, void (*draw)(void));
-/* The panel's turns: green (encoder 1) only since core 2.23; white is the list's order and orange the plugin's switch
- * (plan point 55). Before it, white and orange came too (2, 3). */
+/* The panel's turns: green (encoder 1) only since core 2.23; white is the list's order and orange the plugin's
+ * switch. Before it, white and orange came too (2, 3). */
 void opus_on_panel_knob(struct opl_self *self, int (*knob)(int encoder, int steps));
 /* Text in the OP-1's font: slot 0-7, each with one place and size (its first), the colour and text each call. */
 void opus_panel_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
@@ -418,8 +423,15 @@ struct opus_effect {
     int (*page_key)(struct opus_page *pg, int key, int pressed);
     int (*page_turn)(struct opus_page *pg, int encoder, int detents);
     /* core 2.33, optional: other names this type answers to, separated by spaces: names it had before, or the form an
-     * older Opus wrote it in ("opus1:8": Opus 1's effect number 8). The core keeps no list of them (R61). */
+     * older Opus wrote it in ("opus1:8": Opus 1's effect number 8). The core keeps no list of them. */
     const char *aliases;
+    /* core 2.34, optional: its page drawn by the core, as an engine's page is: on the frame just cleared, at the
+     * effect pages' layer, before any plugin's frame_under handler, so what other plugins draw over effect pages (a
+     * manager's marks, such as a second effect's dots) and the OS's popups go over it; timed and charged to the
+     * plugin; with the opus_page_* names (opus_page_still for what stays still) and opus_page_now for what it shows
+     * (its params, live values, instance). Switched off, the stock "fx off" look over it. With an own screen (svg,
+     * screen_draw) that draws nothing, or none: then it replaces the view. The display thread. */
+    void (*page)(void);
 };
 
 /* Registers an effect type (from opl_init) -> its type (8-15), or < 0: a bad struct or no room (-1; 8 types in all),
@@ -730,6 +742,17 @@ int opus_engine_sound_name(char *buf, int max);
 void opus_page_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
 void opus_page_text_right(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
 void opus_page_text_centre(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);   /* core 2.21: centred on x */
+/* A text's width at a size (core 2.35), measured by the OS's own layout (the same code that draws it: its glyphs and the
+ * spacing of each pair of characters), on this panel: the drawing's units x 256, from the first glyph's left to the
+ * last one's right. A text covers fewer units on a larger panel (its glyphs keep their size in the panel's pixels), so
+ * measure rather than count characters. Inside a page's draw or a frame handler; -1 elsewhere. */
+int opus_text_width(int size, const char *text);
+/* A toast (core 2.35): text in a box that fits it, Opus's look: black, framed in `frame` (a colour id), the text in
+ * `colour` 6 units below the box's top, the box size + 13 units tall from y and 8 units wider than the text each side.
+ * centre 0: the box's left edge at x (it grows to the right); 1: the box and the text centred on x. Kept inside the
+ * drawing. Uses text slot `slot` (its place: x + 8 or x, y + 6, and size stay the same each call). Inside a page's
+ * draw or a frame handler; -> the box's right edge, -1 elsewhere. */
+int opus_page_toast(struct opl_self *self, int slot, int x, int y, int size, int colour, int frame, const char *text, int centre);
 void opus_page_fill(int x0, int y0, int x1, int y1, int colour);         /* a filled rectangle, inclusive */
 void opus_page_frame(int x0, int y0, int x1, int y1, int colour);        /* its outline, one pixel */
 void opus_page_line(int x0, int y0, int x1, int y1, int colour);         /* a unit wide, smoothed (2026-10-23) */

@@ -142,6 +142,8 @@ Most of the API is in core 2.0. These came later; set `core` to the highest vers
 | 2.31 | a module's own page, the same in every module type: `svg`, `screen_init`, `screen_draw`, `page_key`, `page_turn` on effects, engines (drum engines' screens too), LFO types and sequencers; `struct opus_page`, `opus_page_now` |
 | 2.32 | `opus_folder_adopt`: a folder's file endings left in `/mods` itself, moved into it |
 | 2.33 | an engine's `mark` claimed in 0x4F01-0x4FFF too; an effect's `aliases`; `opus_boot_picture` |
+| 2.34 | an effect's `page`: its page drawn by the core at the effect pages' layer, under other plugins' marks and the OP-1's popups |
+| 2.35 | `opus_on_frame_top`, `opus_text_width`, `opus_page_toast` |
 
 Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`, `svg`, `screen_init` and
 `screen_draw`; `struct opus_hosted_effect` and `opus_effect_host`.
@@ -388,7 +390,17 @@ void opus_on_frame(struct opl_self *self, void (*fn)(unsigned short *buf));
 ```
 
 Drawing over the OS's screen: after the OS drew its frame, popups included, in the display thread. Draw with the
-`opus_page_*` functions. `buf` is the frame.
+`opus_page_*` functions. `buf` is the frame. The plugins' handlers run in their load order, so of two plugins
+drawing here the later one draws on top.
+
+```c
+void opus_on_frame_top(struct opl_self *self, void (*fn)(unsigned short *buf));
+```
+
+The top layer (core 2.35): after every `opus_on_frame` handler, the core's and every plugin's, whatever the load order:
+over everything else the frame has. For an overlay that must stay above all (the monitor's figures over a chord's
+name or a popup), not for a plugin's ordinary drawing. Display thread; the `opus_page_*` functions as in a frame
+handler.
 
 ```c
 int opus_frames_late(void);
@@ -1533,6 +1545,8 @@ struct opus_effect {
     int (*page_turn)(struct opus_page *pg, int encoder, int detents);
     /* core 2.33, optional */
     const char *aliases;
+    /* core 2.34, optional */
+    void (*page)(void);
 };
 ```
 
@@ -1566,6 +1580,12 @@ all eight with the sound.
 - `aliases` (core 2.33): other names the type answers to, separated by spaces, or 0: a name it had before a rename, or
   the form an older Opus saved it in (`"opus1:8"`: Opus 1's effect number 8, in its settings). Where an older name turns
   up, the core gives it to the type that lists it; it keeps no list of its own. An older core ignores the field.
+- `page` (core 2.34): its page drawn by the core, as an engine's page is: on the frame just cleared, at the effect
+  pages' own layer, before any plugin's `opus_on_frame_under` handler, so what other plugins draw over effect pages (a
+  second effect's dots) and the OP-1's popups go over it. In the display thread, timed and charged to the plugin; draw
+  with the `opus_page_*` functions (`opus_page_still` for what stays still) and read what it shows with `opus_page_now`
+  (its parameters, their live values, its instance). Switched off, the OP-1's own "fx off" look goes over it. Give it
+  an own screen (`svg`, `screen_draw`) that draws nothing, so the OP-1's page does not show under it.
 
 The process calls (`mono`, `stereo`) are timed and charged to the plugin; when it is switched off by its CPU budget,
 the sound passes through unchanged.
@@ -1577,7 +1597,8 @@ int opus_effect_register(struct opl_self *self, const struct opus_effect *e);
 Registers an effect type, from `opl_init`. The struct must stay valid: make it `static const`. Returns its type number
 (8-15, in the order this start registers them; sounds store the name, so never store the number), or:
 
-- -1: a bad struct (`size` below `sizeof (struct opus_effect)`, no name) or no room (8 plugin types in all);
+- -1: a bad struct (`size` below the first struct's, the fields up to `shift_knob`; no name) or no room (8 plugin types in
+  all). A struct from an older kit, smaller than today's, is taken: its later fields count as absent;
 - -2: no memory in the pool for the OS's slots' instances;
 - -3: the effect list has no row for it;
 - -4: the effect service could not start (a plugin loaded before holds one of its places; the boot log names it).
@@ -2428,6 +2449,26 @@ place, size and alignment of its first call, and each call sets its colour and t
 upper-case letters as icons.
 
 ```c
+int opus_text_width(int size, const char *text);
+```
+
+A text's width at a size (core 2.35), measured by the OP-1's own text layout, the code that draws it: each glyph and
+the spacing of each pair of characters, on this screen. In units x 256, from the first glyph's left to the last one's
+right. Measure rather than count characters: the spacing depends on the pair, the width is not proportional to the
+size, and a text covers fewer units on a larger screen (its glyphs keep their size in the screen's pixels). Inside a
+page's draw or a frame handler; -1 elsewhere.
+
+```c
+int opus_page_toast(struct opl_self *self, int slot, int x, int y, int size, int colour, int frame, const char *text, int centre);
+```
+
+A popup that fits its text (core 2.35), Opus's own look: a black box framed in `frame`, `size` + 13 units tall from
+`y`, 8 units wider than the text on each side (`opus_text_width`), the text in `colour` 6 units below the box's top.
+`centre` 0: the box's left edge at `x`, growing to the right as the text grows; 1: the box and the text centred on `x`.
+Kept inside the drawing. It uses text slot `slot`; keep `x`, `y` and `size` the same on every call. Inside a page's
+draw or a frame handler; returns the box's right edge, or -1 elsewhere.
+
+```c
 void opus_page_fill(int x0, int y0, int x1, int y1, int colour);
 void opus_page_frame(int x0, int y0, int x1, int y1, int colour);
 void opus_page_bar(int x0, int y0, int x1, int y1, unsigned value, unsigned max, int colour);
@@ -2847,6 +2888,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_on_frame` | [Events](#frames) |
 | `opus_on_frame_begin` | [Events](#frames) |
 | `opus_on_frame_under` | [Events](#frames) |
+| `opus_on_frame_top` | [Events](#frames) |
 | `opus_key_post` | [Events](#keys-and-encoders) |
 | `opus_on_key` | [Events](#keys-and-encoders) |
 | `opus_on_key_after` | [Events](#keys-and-encoders) |
@@ -2890,6 +2932,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_page_text` | [Pages](#pages) |
 | `opus_page_text_centre` | [Pages](#pages) |
 | `opus_page_text_right` | [Pages](#pages) |
+| `opus_page_toast` | [Pages](#pages) |
 | `opus_panel_bar` | [The panel](#the-panel) |
 | `opus_panel_fill` | [The panel](#the-panel) |
 | `opus_panel_frame` | [The panel](#the-panel) |
@@ -2925,6 +2968,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_tempo` | [Tempo](#tempo) |
 | `opus_tempo_phase` | [Tempo](#tempo) |
 | `opus_tempo_phase_step` | [Tempo](#tempo) |
+| `opus_text_width` | [Pages](#pages) |
 | `opus_types` | [Managers](#managers) |
 
 Structs and types: `struct opl_self` ([The plugin's entry](#the-plugins-entry)); `struct opus_preset_source`

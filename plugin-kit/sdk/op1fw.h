@@ -1169,4 +1169,11 @@ extern fw_drum_t1_screen_t fw_drum_t1_screen;
 typedef int fw_drum_list_pos_t(int slot, char *found);
 extern fw_drum_list_pos_t fw_drum_list_pos;
 
+/* fw_synth_key_down: synth_controller::key_down, 0x01A51058. The synth mode's key-down (vtable
+ * 0x01911994 slot 2): for key 0x24 (left) and 0x25 (right) the octave step down or up, its
+ * popup and the slot's sound keeping it, as the plain arrows do in stock; ctl is not read for
+ * those two keys (pass 0). Returns 1 when it took the key. KeyHandler thread. */
+typedef int fw_synth_key_down_t(void *ctl, unsigned key);
+extern fw_synth_key_down_t fw_synth_key_down;
+
 #endif

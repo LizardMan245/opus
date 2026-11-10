@@ -9,7 +9,8 @@ A hobby project, built in free time and at its own pace. Help is always welcome,
 starter pack has all of Opus 1's features as plugins, plus dx (a DX7 voice player for your own `.syx` banks),
 outatime (a time-travel synth engine), iter (the OP-1's own hidden engine), a trigger guard for worn keys, a
 Halloween colour theme, and new in beta 4 an LFO matrix, SIM (a drum engine whose page is a physics box), the OP-1's
-own help screen back, endless latch and preset tools (overwrite, rename and delete). Beside the pack: the monitor,
+own help screen back, endless latch and preset tools (overwrite, rename and delete); beta 4.1 brings a chorus page
+that draws its voices and pitch bend on the plain arrows. Beside the pack: the monitor,
 which shows what the OP-1 and every plugin cost while you hold FN, and the bridge, an alpha, which runs op1r's and
 Hundekraft's synths, effects and sequencers on Opus.
 
@@ -30,7 +31,8 @@ supported. https://opus-op1.pages.dev/opus1/
 Opus is built so you can try it without risk and leave without losing anything.
 
 - **Coming from stock or Opus 1:** your sounds, presets and tape stay. Opus 1's sounds play with the starter pack in
-  the mods folder. At the first start with beta 4, your saved presets move into files on the USB disk.
+  the mods folder. Coming from beta 3 or earlier, your saved presets move into files on the USB disk at the first
+  start.
 - **Coming from op1r or Hundekraft:** to try Opus out, install it over them: your sounds, presets and tape stay, and so
   do op1r's plugin files. Hundekraft's don't: it keeps them among the OP-1's own files, which every install replaces.
   To switch for good, start clean: back up the disk, factory reset (te-boot's 7, which leaves op1r's plugin files),
@@ -77,7 +79,7 @@ These ideas come from VST3, CLAP, Fabric, Forge, Harmony and Mixin: see [docs/de
 | `opus.orbit3d` | 3D line drawing library for plugin pages |
 | `opus.matrix` | LFO matrix |
 | `opus.bitcrush` | effect |
-| `opus.chorus` | effect |
+| `opus.chorus` | effect whose page draws its voices (needs `opus.orbit3d`) |
 | `opus.plate` | reverb |
 | `opus.filter` | the OP-1's hidden filter effect |
 | `opus.overdrive` | a second effect behind every slot |
@@ -123,7 +125,7 @@ thread on op-forums. Where ideas came from: [CREDITS.md](CREDITS.md).
 What's in this repository (the docs and the plugin kit) is [GPL-3.0](LICENSE): use it, change it and share it,
 and what you build on it stays open too. The plugin kit adds two terms under the GPL's section 7: a modified version
 has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, free to use and share. Their
-source is not published yet, apart from the kit's four examples. The source of the core and the other plugins will
+source is not published yet, apart from the kit's five examples. The source of the core and the other plugins will
 be published once it's properly put together. There's no date yet, but it isn't meant to stay closed. dx contains
 code under the Apache License 2.0 (its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all
 rights reserved: please don't share them, link to the website instead.

@@ -812,7 +812,7 @@ def check_set(paths, ldr=LDR, core=CORE):
             f['state'], f['why'] = 'refused', damage_words(str(e))
             continue
         f.update(id=man['id'], version=man['version'], name=man['name'], info=info, ver=_version(man['version']),
-                 needs=[(w.split()[0], _version(w.split()[1], 2)) for w in man.get('needs', [])],
+                 needs=[(w.split()[0], _version(w.split()[1], 3)) for w in man.get('needs', [])],
                  uses=_uses(man.get('uses', [])), checked=checked_of(man), replaces=man.get('replaces', []),
                  kinds={a.split()[0] for a in man.get('adds', []) if a.split() and a.split()[0] in ('engine', 'effect', 'lfo')})
         core_ver = _version(man['core'], 2)
@@ -920,7 +920,8 @@ def check_set(paths, ldr=LDR, core=CORE):
                     if g['id'] == nid:
                         if g['state'] is None:
                             pending = True
-                        elif g['state'] == 'loads' and g['ver'][:2] >= nver:
+                        elif g['state'] == 'loads' and g['ver'] >= nver:   # all three numbers, as loader.c's
+                            # ver_cmp (2026-11-09: with only two kept, `needs opus.orbit3d 0.2.6` never passed)
                             ok = True
                 if not ok:
                     ready = False

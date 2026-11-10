@@ -196,7 +196,7 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=(), count=True):
     FAR_BASE up, and `far_zero` (address, bytes) their zero fill; `tiers` the measured tiers' sizes."""
     tc = toolchain(tc)
     name = os.path.basename(os.path.normpath(mod_dir))
-    if os.path.isdir(os.path.join(mod_dir, 'plugins')):   # a core with its plugins: the two worlds stay apart (R61)
+    if os.path.isdir(os.path.join(mod_dir, 'plugins')):   # a core with its plugins: the two worlds stay apart
         from worlds import check
         crossed = check(mod_dir)
         if crossed:

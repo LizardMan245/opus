@@ -100,4 +100,15 @@ void o3_ellipse(int cx, int cy, int rx, int ry, int w, const int *clip);
  * so a fading solid's face fades with it. Reads each pixel. */
 void o3_fill_alpha(const int *xy, int n, int alpha);
 
+/* o3_seg_width (0.2.6): o3_seg at any width (panel pixels x 256, a pixel at least) instead of the three weights, no
+ * halo: a line that thickens with a value (chorus's waves with its feedback). */
+void o3_seg_width(const int *xy, int n, int closed, int width, int on, int off);
+
+/* o3_traces (0.2.6): k traces (up to 16) at once, the cheap way for curves that are a height for each x (scopes, an
+ * LFO's shape, a chorus's waves): trace t is n heights ys[t][] (the drawing's pixels x 256) spread evenly from x0 to x1
+ * (the drawing's pixels x 256), width[t] thick (panel pixels x 256, across the trace), rgb[t] (OPUS_RGB). Drawn a panel
+ * column at a time, smoothed at each run's ends; where traces meet each channel keeps the brighter (the same whichever
+ * comes first); the frame is written, never read, and what no trace lights keeps what was there. */
+void o3_traces(const int *const *ys, int n, int x0, int x1, const int *rgb, const int *width, int k);
+
 #endif

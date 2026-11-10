@@ -22,7 +22,7 @@ ticks around it and a moon that hides what passes behind it.
 - [Lines](#lines): `o3_line`, `o3_circle`, `o3_ring_ticks`, weights and styles
 - [Marks and places](#marks-and-places): `o3_glyph`, `o3_project`, `o3_to_view`, `o3_to_page`, `o3_drawn`
 - [Inks](#inks): `o3_ink`, `O3_OVER`
-- [The 2D overlay](#the-2d-overlay): `o3_seg`, `o3_lines`, `o3_dot`, `o3_rect`, `o3_ellipse`, `o3_fill`,
+- [The 2D overlay](#the-2d-overlay): `o3_seg`, `o3_seg_width`, `o3_traces`, `o3_lines`, `o3_dot`, `o3_rect`, `o3_ellipse`, `o3_fill`,
   `o3_fill_alpha`, `o3_wave`, `o3_band`, `o3_text`, `o3_text_width`
 - [Cost and limits](#cost-and-limits)
 - [Versions](#versions)
@@ -182,6 +182,8 @@ All in the drawing's pixels x 256, in the current ink:
 
 ```c
 void o3_seg(const int *xy, int n, int closed, int weight, int on, int off);
+void o3_seg_width(const int *xy, int n, int closed, int width, int on, int off);
+void o3_traces(const int *const *ys, int n, int x0, int x1, const int *rgb, const int *width, int k);
 void o3_lines(const int *xy, int n, int weight);
 void o3_dot(int x, int y, int size);
 void o3_rect(int x0, int y0, int x1, int y1, int on, int off, int thick);
@@ -195,7 +197,13 @@ int o3_text_width(int dot, int chars);
 ```
 
 - `o3_seg`: a polyline through `n` points (`xy`: x0 y0 x1 y1 ...), dashed `on`/`off` (panel pixels x 256; `on` 0
-  solid), a weight as the 3D lines'. `o3_lines`: `n` separate segments (x0 y0 x1 y1 each), solid, in one go.
+  solid), a weight as the 3D lines'. `o3_seg_width` (0.2.6): the same at any width, panel pixels x 256 (a pixel at
+  least), no halo: a line that thickens with a value. `o3_lines`: `n` separate segments (x0 y0 x1 y1 each), solid, in one go.
+- `o3_traces` (0.2.6): up to 16 curves at once, for curves that are a height for every x (scopes, an LFO's shape,
+  waves): curve t is `n` heights `ys[t][]` spread evenly from `x0` to `x1`, `width[t]` thick (panel pixels x 256,
+  across the curve), `rgb[t]` (`OPUS_RGB`). Drawn a screen column at a time, smoothed at each column's run's ends;
+  where curves meet each colour channel keeps the brighter, whichever comes first, and the frame is written, never
+  read. Several times cheaper than the same curves as lines (`o3_seg`): use it for many moving curves.
 - `o3_dot`: a square `size` across (at least a panel pixel), centred on (x, y).
 - `o3_rect`: an upright rectangle's outline of whole pixels, `thick` panel pixels, dashed `on`/`off` (panel pixels;
   `off` 0 solid). Cheap, not smoothed.
@@ -225,7 +233,7 @@ int o3_text_width(int dot, int chars);
 
 ## Versions
 
-`needs opus.orbit3d 0.2.5` gives everything on this page.
+`needs opus.orbit3d 0.2.6` gives everything on this page (0.2.5 all but `o3_seg_width` and `o3_traces`).
 
 | version | what came |
 |---|---|
@@ -235,6 +243,7 @@ int o3_text_width(int dot, int chars);
 | 0.2.3 | `O3_OVER`'s edges never darker than what is there |
 | 0.2.4 | `o3_ellipse` |
 | 0.2.5 | a fading ink only brightens; `o3_fill_alpha` |
+| 0.2.6 | `o3_seg_width`: a 2D line at any width; `o3_traces`: many curves at once, the cheap way |
 
 ## The example: opus.globe
 
