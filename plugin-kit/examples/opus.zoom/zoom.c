@@ -1,6 +1,6 @@
-/* opus.zoom: better zoom (Opus 1's zoom.c, build 90; 2026-10-12: shift + the white encoder on the tape
- * screen zooms in and out, clockwise in). In stock that turn sets the tape speed in percent; the choice: the zoom
- * replaces it there (plain white still sets the speed in semitone steps).
+/* opus.zoom: better zoom: shift + the white encoder on the tape screen zooms in and out, clockwise in. In stock
+ * that turn sets the tape speed in percent; the zoom replaces it there (plain white still sets the speed in
+ * semitone steps).
  *
  * The tape view's zoom is a float, pixels a second: the target [0x018C1838] and the shown value
  * [0x018C183C], which the view's draw eases toward the target each frame (a doubling settles in about 0.4 s). Stock

@@ -1,5 +1,5 @@
-/* opus.bitcrush: Opus 1's bitcrush (its fx.c, build 90), its sound unchanged, as an effect plugin on
- * the core's effect service (effects.c). */
+/* opus.bitcrush: a bitcrusher as an effect plugin on the core's effect service: the rate (a sample-and-hold),
+ * the bits, a tone (a low-pass after the crush) and the mix. */
 #include "opus_plugin.h"
 #include "op1fw.h"
 
@@ -23,8 +23,7 @@ struct state {
 };
 
 /* The hold, the tone and the mix, each sample; open (the tone's low-pass open) and full (the mix all wet) fixed for the
- * block (2.0.1, 2026-10-28: tested every sample, both mispredicted at the defaults, they cost most of a sample; the
- * same output, a block 3,774 -> 1,639 cycles). */
+ * block (tested every sample, both branches mispredict at the defaults and cost most of a sample's work). */
 static inline __attribute__((always_inline))
 void crush_n(struct chan *c, short *buf, int n, u32 inc, int step, int half, int a, int mix, int open, int full)
 {
@@ -136,12 +135,12 @@ static void view(const short *par, struct opus_fx_view *v)
     v->waves = 1;
 }
 
-/* Bitcrush: one rate step and one bit per detent (1024 x 8, 2048 x 8); tone and mix 4 % a detent (Opus 1's
- * fx_limits row); params 4-7 unused, step 0. */
+/* Bitcrush: one rate step and one bit per detent (1024 x 8, 2048 x 8); tone and mix 4 % a detent; params 4-7
+ * unused, step 0. */
 static const struct opus_effect BITCRUSH = {
     .size = sizeof(struct opus_effect),
     .name = "bitcrush",
-    .aliases = "opus1:8",              /* 2.0.2 (core 2.33): Opus 1's number 8 for it, in its settings */
+    .aliases = "opus1:8",              /* Opus 1's effect number 8: a sound saved on Opus 1 finds it */
     .defaults = { 19968, 15360, 0, 32767, 0, 0, 0, 0 },
     .limits = { { 0, 32767, 8192 }, { 0, 32767, 16384 }, { 0, 32767, 10485 }, { 0, 32767, 10485 },
                 { 0, 32767, 0 }, { 0, 32767, 0 }, { 0, 32767, 0 }, { 0, 32767, 0 } },

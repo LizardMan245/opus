@@ -15,7 +15,7 @@ import struct
 import sys
 import zlib
 
-MAGIC = 0x5243504F                         # "OPCR"
+MAGIC = 0x5243504F
 VERSION = 1
 FRAMES, PLUGINS, STACK = 32, 30, 256
 FIELDS = ('count', 'state', 'how', 'uptime_ms', 'cycles_lo', 'cycles_hi', 'kind', 'seqstat', 'retx', 'reti', 'rets',
@@ -23,8 +23,8 @@ FIELDS = ('count', 'state', 'how', 'uptime_ms', 'cycles_lo', 'cycles_hi', 'kind'
           'screen', 'pool_used', 'menu', 'nframes')
 TALLY = ('passes', 'failed', 'cleared', 'ms')
 SIZE_1 = 16 + 4 * len(FIELDS) + 4 * FRAMES + 4 + PLUGINS * 60 + 32 + 256 + 4 * STACK
-SIZE_2 = SIZE_1 + 4 * len(TALLY)                # up to 2026-11-04
-REGS = ('regs_from',) + tuple(f'r{k}' for k in range(8)) + tuple(f'p{k}' for k in range(6)) +     tuple(f'i{k}' for k in range(4)) + ('astat', 'rfp', 'rsp')   # the crashed code's registers, from 2026-11-04
+SIZE_2 = SIZE_1 + 4 * len(TALLY)
+REGS = ('regs_from',) + tuple(f'r{k}' for k in range(8)) + tuple(f'p{k}' for k in range(6)) +     tuple(f'i{k}' for k in range(4)) + ('astat', 'rfp', 'rsp')
 SIZES = (SIZE_1, SIZE_1 + 12, SIZE_2, SIZE_2 + 4 * len(REGS))
 KINDS = {1: "an assert (the OS's fatal message)", 2: 'an exception', 3: 'a freeze (no audio block for 2 s)'}
 HOWS = {0: 'nothing yet', 1: 'stop', 2: 'the power switch', 3: "the screen's guard (the screen stopped)",
@@ -35,31 +35,27 @@ EXCAUSE = {0x21: 'undefined instruction', 0x22: 'illegal instruction combination
            0x28: 'emulation watchpoint', 0x2A: 'instruction fetch misaligned', 0x2B: 'instruction fetch CPLB protection',
            0x2C: 'instruction fetch CPLB miss', 0x2D: 'instruction fetch multiple CPLB hits',
            0x2E: 'illegal use of a supervisor resource'}
-LOG_MARK = b'-- the crash record, for crashlog.py --'   # the log's line before the record
-OS_CODE = (0x0191209C, 0x01AA4A4A)         # the OP-1 firmware's own code
-CORE = (0x01E00000, 0x01F00000)            # Opus's core (plugins with patches can load there too)
+LOG_MARK = b'-- the crash record, for crashlog.py --'
+OS_CODE = (0x0191209C, 0x01AA4A4A)
+CORE = (0x01E00000, 0x01F00000)
 L1_CODE = (0xFFA00000, 0xFFA14000)
-PLUGIN_ELF_BASE = 0x01E80000               # where the kit's build links build/NAME.build/plugin_0.elf
-
+PLUGIN_ELF_BASE = 0x01E80000
 
 class RecordError(Exception):
     pass
 
-
 def record_bytes(data):
-    """A crash log's record (the hexadecimal after its mark line), or the bytes as they are (a raw record)."""
+
     at = data.find(LOG_MARK)
     if at < 0:
         return data
     return bytes.fromhex(data[at + len(LOG_MARK):].decode('ascii', 'replace').replace('\r', '').replace('\n', ''))
 
-
 def _cstr(b):
     return b.split(b'\0')[0].decode('latin-1')
 
-
 def parse(data):
-    """The record's bytes -> a dict; RecordError when it is not a whole, sound record."""
+
     if len(data) < 16:
         raise RecordError('no crash record in it')
     magic, version, size, crc = struct.unpack_from('<4I', data)
@@ -92,9 +88,8 @@ def parse(data):
         r.update(zip(REGS, struct.unpack_from(f'<{len(REGS)}I', data, SIZE_2)))
     return r
 
-
 def elf_functions(path):
-    """An ELF's functions: [(address, size, name)], from its symbol table."""
+
     data = open(path, 'rb').read()
     shoff, = struct.unpack_from('<I', data, 0x20)
     shentsize, shnum, shstrndx = struct.unpack_from('<3H', data, 0x2E)
@@ -104,15 +99,14 @@ def elf_functions(path):
         return data[at:data.index(b'\0', at)].decode('latin-1')
     funcs = []
     for s in secs:
-        if s[1] == 2:                      # SHT_SYMTAB
+        if s[1] == 2:
             strtab = secs[s[6]][4]
             for k in range(s[5] // 16):
                 name_at, value, size, info = struct.unpack_from('<3IB', data, s[4] + 16 * k)
-                if info & 0xF == 2:        # STT_FUNC
+                if info & 0xF == 2:
                     name = cstr(strtab + name_at)
                     funcs.append((value, size, name[1:] if name.startswith('_') else name))
     return sorted(set(funcs))
-
 
 def where(a, plugins, named):
     for p in plugins:
@@ -130,17 +124,14 @@ def where(a, plugins, named):
         return 'the OP-1 firmware'
     return ''
 
-
 def code_like(a, plugins):
     return (OS_CODE[0] <= a < OS_CODE[1] or CORE[0] <= a < CORE[1] or L1_CODE[0] <= a < L1_CODE[1]
             or any(p['base'] <= a < p['base'] + p['size'] for p in plugins)) and not a & 1
 
-
 REGS_FROM = {1: 'where it faulted', 2: 'where the freeze watch found it', 3: "the screen's caller's (an assert)"}
 
-
 def register_lines(r, w):
-    """The crashed code's registers (records from 2026-11-04), each with what it points into when that is code."""
+
     if not r.get('regs_from'):
         return []
     out = [f"registers, {REGS_FROM.get(r['regs_from'], r['regs_from'])}:"]
@@ -150,10 +141,9 @@ def register_lines(r, w):
     out.append(f"  astat 0x{r['astat']:08x}  fp 0x{r['rfp']:08x}  sp 0x{r['rsp']:08x}")
     return out
 
-
 def report(r, named=None):
     named = named or {}
-    w = lambda a: where(a, r['plugins'], named)   # noqa: E731
+    w = lambda a: where(a, r['plugins'], named)
     up = r['uptime_ms']
     out = [f"Opus crash record {r['count']} ({r['build']}): {KINDS.get(r['kind'], r['kind'])}, "
            f"{up // 3600000}:{up // 60000 % 60:02d}:{up // 1000 % 60:02d} after the start; restarted by "
@@ -171,7 +161,7 @@ def report(r, named=None):
     out.append(f"reti    0x{r['reti']:08x}  {w(r['reti'])}")
     out.append(f"sp 0x{r['sp']:08x} fp 0x{r['fp']:08x}; the screen 0x{r['screen']:x}; "
                f"Opus's menu page {r['menu'] & 0xFF}")
-    out += register_lines(r, lambda a: w(a) if code_like(a, r['plugins']) else '')   # code only: data stays plain
+    out += register_lines(r, lambda a: w(a) if code_like(a, r['plugins']) else '')
     out.append('')
     out.append('frames (return addresses up the frame chain):')
     for i, a in enumerate(r['frames']):
@@ -187,7 +177,6 @@ def report(r, named=None):
     for p in r['plugins']:
         out.append(f"  {p['id']} at 0x{p['base']:08x}, {p['size']} bytes, file crc 0x{p['crc']:08x}")
     return '\n'.join(out)
-
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -209,7 +198,6 @@ def main(argv=None):
         return 1
     print(report(r, named))
     return 0
-
 
 if __name__ == '__main__':
     sys.exit(main())

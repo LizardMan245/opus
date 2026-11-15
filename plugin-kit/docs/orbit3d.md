@@ -184,6 +184,7 @@ All in the drawing's pixels x 256, in the current ink:
 void o3_seg(const int *xy, int n, int closed, int weight, int on, int off);
 void o3_seg_width(const int *xy, int n, int closed, int width, int on, int off);
 void o3_traces(const int *const *ys, int n, int x0, int x1, const int *rgb, const int *width, int k);
+void o3_traces_spans(const int *const *ys, int n, const int *x0, const int *x1, const int *rgb, const int *width, int k);
 void o3_lines(const int *xy, int n, int weight);
 void o3_dot(int x, int y, int size);
 void o3_rect(int x0, int y0, int x1, int y1, int on, int off, int thick);
@@ -203,7 +204,11 @@ int o3_text_width(int dot, int chars);
   waves): curve t is `n` heights `ys[t][]` spread evenly from `x0` to `x1`, `width[t]` thick (panel pixels x 256,
   across the curve), `rgb[t]` (`OPUS_RGB`). Drawn a screen column at a time, smoothed at each column's run's ends;
   where curves meet each colour channel keeps the brighter, whichever comes first, and the frame is written, never
-  read. Several times cheaper than the same curves as lines (`o3_seg`): use it for many moving curves.
+  read. Several times cheaper than the same curves as lines (`o3_seg`): use it for many moving curves. One call's
+  curves blend with each other only: a second call writes over the first's pixels, its dim edges darkening the lines
+  it crosses. So draw all the curves of a picture in one call.
+- `o3_traces_spans` (0.2.7): the same, each curve from its own `x0[t]` to `x1[t]`, up to 64 in one call: for curves
+  that start and end at different places (a stack of rows seen at an angle) and still meet cleanly.
 - `o3_dot`: a square `size` across (at least a panel pixel), centred on (x, y).
 - `o3_rect`: an upright rectangle's outline of whole pixels, `thick` panel pixels, dashed `on`/`off` (panel pixels;
   `off` 0 solid). Cheap, not smoothed.

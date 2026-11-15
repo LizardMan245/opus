@@ -4,7 +4,7 @@ t1.svg, t2.svg, t4.svg) before it goes on the device.
     python tools/op1mod/svgcheck.py FILE.svg [FILE.svg ...]
 
 The OS's own SVG parser draws a small part of SVG, drops much without a word, and stops the OP-1 (the
-crash screen) on a few things. Errors are those (the core checks the same before it loads a file, art.c, and refuses
+crash screen) on a few things. Errors are those (the core checks the same before it loads a file and refuses
 it): an XML error, a root other than <svg>, a number with a point and no or more than four decimals, an exponent,
 the path commands Q and T, an id with "_x" not followed by two characters and "_". Warnings are what it drops or
 draws otherwise: elements other than svg, g, line, polyline, polygon, rect, circle, ellipse, path (text, use, defs,
@@ -33,10 +33,8 @@ DROPPED_ATTR = {'style': 'style= is dropped: put fill, stroke and widths on the 
                 'stroke-dasharray': 'stroke-dasharray is dropped (a solid line)', 'fill-rule': 'fill-rule is dropped',
                 'display': 'display is dropped', 'visibility': 'visibility is dropped'}
 
-
 def local(tag):
     return tag.split('}', 1)[-1]
-
 
 def number_errors(value, is_path):
     errs = []
@@ -51,12 +49,12 @@ def number_errors(value, is_path):
             break
     return errs
 
-
 def check(path):
     errors, warnings = [], []
-    raw = open(path, 'rb').read()
-    if len(raw) > 65536:
-        errors.append(f'{len(raw)} bytes: more than the 64 KB the core loads')
+    with open(path, 'rb') as f:
+        raw = f.read()
+    if len(raw) > 131072:
+        errors.append(f'{len(raw)} bytes: more than the 128 KB the core loads')
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as e:
@@ -114,7 +112,6 @@ def check(path):
     walk(root, 0)
     return errors, warnings
 
-
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__.split('\n\n')[1])
@@ -128,7 +125,6 @@ def main():
             print(f'  warning: {w}')
         bad |= bool(errors)
     return 1 if bad else 0
-
 
 if __name__ == '__main__':
     sys.exit(main())

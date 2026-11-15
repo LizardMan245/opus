@@ -37,6 +37,8 @@ and built from scratch for Opus. But an idea came from somewhere, and that deser
 - **The FN key:** help as a modifier for plugins' controls. Thanks to katerlouis, who suggested it too.
 - **The trigger guard:** u/Andromax_sussybaka's idea on r/OP1Mods, a guard against keys that fire twice. Opus's
   plugin is its own take on it.
+- **Two calls in the plugin kit:** `opus_drum_select_key` and `opus_on_line_input`, asked for by Volker for his
+  plugins.
 
 ## Thanks
 

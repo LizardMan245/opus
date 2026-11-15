@@ -714,6 +714,23 @@ int opus_engine_live(short par[8]);
 /* The drum's current key (0-23: the last note key played, the one T1's encoders turn) and its eight numbers as the
  * current kit stores them (core 2.24): for a drum engine's page. Any thread. */
 int opus_drum_key(short par[8]);
+/* Makes key (0-23) the drum's current key without playing it (core 2.57): as a note key pressed and let go would,
+ * but silent, nothing held and no screen left. From then opus_drum_key and the drum's T1 (its encoders, its page:
+ * a stock kit's or a drum engine's) take that key, and edits save to it as ever, until a note key or a note played
+ * on the drum moves it again (shift + a key does not: the OS leaves the current key then). 1, or 0 for a key outside
+ * 0-23. For a sequencer that edits one pad of a kit (shift + its key) and a drum engine's page that shows it. Any
+ * thread. */
+int opus_drum_select_key(int key);
+
+/* The line input as the codec sends it, before the OS sums its two sides (core 2.58): fn gets each audio block's 64
+ * frames (44.1 kHz) as 128 words, left then right a frame, each sample in a word's top 24 bits (the low byte 0; full
+ * scale +-2^31), in the audio interrupt before the OS adds left and right into its one input, which the input's
+ * monitoring, the sampler, the tape's recording and the meter all use. What fn leaves in the buffer is what they get
+ * for that same block: a side zeroed is a side gone. Only while the input source is the line input (its jack or the
+ * input menu), whatever the input's on, off or resample state. The audio block's rules (docs/rules.md): no waiting,
+ * no files, fast; its time is charged to the plugin. One handler a plugin (a second call replaces the first);
+ * from opl_init. */
+void opus_on_line_input(struct opl_self *self, void (*fn)(int *stereo, unsigned frames));
 /* The current sound's knobs for a page, and 1 when it is an engine's: since core 2.8 as opus_engine_live (the LFO in
  * while a note sounds), so every value a page shows follows the modulation as the stock screens' do; core 2.3-2.7 gave
  * the stored knobs. Any thread. */
@@ -981,5 +998,7 @@ struct opus_sequencer {
 };
 int opus_seq_register(struct opl_self *self, const struct opus_sequencer *s);
 int opus_seq_mode(void);                   /* the instrument the OS's sequencer calls are for now: 0 synth, 1 drum */
+
+
 
 #endif

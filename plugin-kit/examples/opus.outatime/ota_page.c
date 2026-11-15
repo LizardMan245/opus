@@ -1,18 +1,18 @@
-/* outatime's T1: the time-machine page (the design reference v3, its drawing code ported), its instruments taken
- * over by meaning (2026-10-26):
+/* outatime's T1: the time-machine page (the design's drawing code ported), its instruments taken
+ * over by meaning:
  *
  * What the user set (DEST, the meter's arc and digits, the readout, the tabs' numbers) shows opus_engine_knobs (the
- * stored knobs in core 2.3-2.7; since core 2.8 the LFO in while a note sounds, 2026-10-28: every value
+ * LFO in while a note sounds: every value
  * follows the modulation); what the sound does (PRES, the needle and the car, the rods, the fire) the live ones
  * (opus_engine_live), as the OS's own engine screens move with it.
  *
- *   year  (blue)    the time circuits, each row the OP-1's own month, day and time (opus_clock, core 2.4; only
+ *   year  (blue)    the time circuits, each row the OP-1's own month, day and time (opus_clock; only
  *                   the year changes with the knob): DEST the destination, PRES
  *                   the first arm's year as the time drift moves it (ota_arm_year), LAST the destination before the
  *                   last change; PRES a darker shade of the green
  *                   encoder's colour
  *   speed (green)   the speedometer (its arc and digits the knob, the needle the car's speed), the road, the wheels
- *                   (their spokes in the first encoder's colour, as v3's)
+ *                   (their spokes in the first encoder's colour)
  *   power (white)   the flux capacitor: its rods are the three arms, each glowing with power and, while a note plays,
  *                   breathing at its place in the time drift; the readout in gigawatts; the current along all three
  *                   time cables, at one speed, fewer pulses on a shorter cable, none where a cable passes behind the body
@@ -20,10 +20,9 @@
  *                   down, burning down after the last one over the trail's time (40 ms to 1.4 s, the ignition's), new
  *                   flames only while the needle stays there; each flame's colour, glow and size fade with its age, its
  *                   flicker blended between draws, its intensity kept while notes are held down; the white-hot
- *                   core fades out with its age and its height, so the small flames inside the big one fade too; a
- *                   trail half as long again as v3's
- *   shift           spread, tone and flux on the blue, green and white tabs; the overdrive's type on trail's (1.2:
- *                   shift + orange turns it)
+ *                   core fades out with its age and its height, so the small flames inside the big one fade too
+ *   shift           spread, tone and flux on the blue, green and white tabs; the overdrive's type on trail's
+ *                   (shift + orange turns it)
  *
  * The plugin's setting "always driving" (outatime.c) drives the car with no key down: at the set speed, its fire at
  * trail's height, the current running.
@@ -32,9 +31,9 @@
  * the parts that change with a setting (the rows, the meter, the readout, the tabs' names) are drawn when they change
  * and kept too (zones); every frame copies them back and draws what moves (the road, the fire, the wheels, the needle,
  * the rods, the current) with the core's smoothed lines (path.c: far cheaper than the OS's renderer). The animation
- * runs on the cycle counter (400 MHz) as v3's preview runs on the clock. The colours follow the encoders'
+ * runs on the cycle counter (400 MHz). The colours follow the encoders'
  * (the user's picks, a theme): everything is made again when one changes. Its cost, a frame on rev 2 with the cache
- * timing (test_outatime_page, 2026-10-26): parked 0.93 M cycles, a note held 1.24 M, flat out 1.05 M, the worst frame
+ * timing: parked 0.93 M cycles, a note held 1.24 M, flat out 1.05 M, the worst frame
  * 3.5 M (the year crossing 1970 or 2000: every row's fields at once), the art made 21.8 M once; 28.5 frames a second
  *, so 0.93 M is about 6.6 % of the CPU. */
 #include "opus_plugin.h"
@@ -52,7 +51,7 @@ typedef unsigned int u32;
 #define FIELD_WORDS     1536               /* a time circuits row's field */
 #define TAB_WORDS       1024               /* a tab's name, the readout */
 #define FLAMES          40
-#define FLAME_GAP       U(6.5)             /* a flame every 6.5 units the car drives (v3) */
+#define FLAME_GAP       U(6.5)             /* a flame every 6.5 units the car drives (the design's) */
 #define FLAME_LIFE      2250               /* ms: a flame left behind burns out by then (the car stopped) */
 #define THIRD           0x55555555u
 
@@ -101,7 +100,7 @@ static int lit_env, fire_lv;               /* fire_lv: Q15, the fire's height (t
 static int cable_at[CABLE_N], cable_len[CABLES];   /* units x 256 along its cable to each point; each one's length */
 static int at_speed;                       /* the needle at the set speed (the fire), a frame ago */
 static int rod_u[3][2];                    /* each rod's direction, Q12 */
-static u32 rs;                             /* v3's xorshift */
+static u32 rs;                             /* the design's xorshift */
 
 volatile unsigned ota_page_frames, ota_page_cycles, ota_page_cycles_max, ota_page_make_cycles;
 volatile int ota_page_flames;              /* the flames burning (the tests) */
@@ -159,7 +158,7 @@ static unsigned mix(unsigned a, unsigned b, int t256)
     return out;
 }
 
-/* v3's ramps: colours at stops (Q15), t between them */
+/* the design's ramps: colours at stops (Q15), t between them */
 static unsigned ramp(const unsigned *col, const int *at, int n, int t)
 {
     for (int i = 1; i < n; ++i)
@@ -194,7 +193,7 @@ static void sincos(int turn, int *s, int *c)   /* 1/4096 of a turn, any; x 4096 
     opus_sincos(turn > 2048 ? turn - 4096 : turn, s, c);
 }
 
-static int pow07(int x)                    /* Q15: x^0.7 (v3's flame height over its life) */
+static int pow07(int x)                    /* Q15: x^0.7 (the design's flame height over its life) */
 {
     static const unsigned short T[17] = { 0, 4706, 7645, 10152, 12416, 14516, 16492, 18370, 20172, 21906, 23583,
                                           25208, 26791, 28334, 29845, 31320, 32768 };
@@ -442,7 +441,7 @@ static void cubic(int x0, int y0, int x1, int y1, int x2, int y2, int x3, int y3
     }
 }
 
-static void tongue(int x, int gy, int h, int w, int lean, int lw, unsigned rgb)   /* a flame (v3's) */
+static void tongue(int x, int gy, int h, int w, int lean, int lw, unsigned rgb)   /* a flame (the design's) */
 {
     const int xl = x - w / 2, xr = x + w / 2, tx = x + lean, ty = gy - h;
     cubic(xl, gy, xl, gy - h * 55 / 100, tx - w * 18 / 100, gy - h * 82 / 100, tx, ty, lw, rgb);
@@ -466,7 +465,7 @@ static int cable_point(int c, int d, int *x, int *y)
     return cable_at[i];
 }
 
-/* The clock: the time since the last frame (at most 250 ms, v3's), the car's drive, the road, the fire */
+/* The clock: the time since the last frame (at most 250 ms, the design's), the car's drive, the road, the fire */
 static int step(int held, int speed01, int lv, int dt)
 {
     const int target = held ? 32767 : 0, tau = held ? 250 : 700;
@@ -477,9 +476,9 @@ static int step(int held, int speed01, int lv, int dt)
     const int vel = U(26) + ((U(270) >> 4) * speed01 >> 11);   /* units x 256 a second along the road */
     const int dx = act ? vel * dt / 1000 : 0;
     road = (road + dx) % U(26);
-    wheel = (wheel - (dx * 869 >> 12)) & 4095;   /* v3: a radian each 12 units */
+    wheel = (wheel - (dx * 869 >> 12)) & 4095;   /* the design: a radian each 12 units */
     streak = (streak + dx) % U(1700);
-    if (act) {                             /* v3's 0.4 + 1.2 x speed passes a second of the longest, on every cable */
+    if (act) {                             /* 0.4 + 1.2 x speed passes a second of the longest, on every cable */
         const int adv = (cable_len[0] * (410 + (1229 * speed01 >> 15)) >> 10) * dt / 1000;
         for (int c = 0; c < CABLES; ++c)
             cable_d[c] = (cable_d[c] + adv) % cable_len[c];
@@ -500,7 +499,7 @@ static int step(int held, int speed01, int lv, int dt)
             struct flame *const f1 = &flame[flames++];
             f1->x = EMIT_X + emit;
             f1->lv = lv;
-            f1->L = U(30) + ((U(225) >> 4) * lv >> 11);   /* units driven to burn out: v3's 20 + 150 x trail, x 1.5 */
+            f1->L = U(30) + ((U(225) >> 4) * lv >> 11);   /* units driven to burn out: 1.5 x (20 + 150 x trail) */
             f1->id = flame_id++;
             f1->born = now_ms;
         }
@@ -508,7 +507,7 @@ static int step(int held, int speed01, int lv, int dt)
     return dx;
 }
 
-/* A flame's flicker (v3's: 18 new draws a second), blended from one draw to the next so it moves, not jumps: its
+/* A flame's flicker (18 new draws a second), blended from one draw to the next so it moves, not jumps: its
  * height 0.72-1 (Q15) and lean (units x 256) */
 static void flicker(const struct flame *f, int *size, int *lean)
 {
@@ -652,7 +651,7 @@ int ota_page_frame(const short *set, const short *k, int shift, int held, const 
     last_cycles = c;
     now_ms += (unsigned)dt;
     const int spd = clampk(k[OTA_SPEED]), power = clampk(k[OTA_POWER]), trail = clampk(k[OTA_TRAIL]);
-    const int speed01 = act * (4915 + (spd * 27853 >> 15)) >> 15;   /* v3: 0.15 + 0.85 x the knob, while driving */
+    const int speed01 = act * (4915 + (spd * 27853 >> 15)) >> 15;   /* 0.15 + 0.85 x the knob, while driving */
     const int env = v ? clampk(v->env) : 0;
     const int mph = ota_mph(set[OTA_SPEED]), drv = mph * 32767 / 88;   /* the needle's top: the set speed */
     const int there = act > 655 && speed01 * 50 > drv * 49;   /* the needle at it (within 2 %): the fire */
@@ -764,7 +763,7 @@ int ota_page_frame(const short *set, const short *k, int shift, int held, const 
     fire(a3);
 
     /* the cables' current, while a note plays: power's 1-3 pulses on the longest, as many a length on the others (at
-     * least one), each 0.035 of the longest (v3's) and cut where its cable goes behind the body */
+     * least one), each 0.035 of the longest (the design's) and cut where its cable goes behind the body */
     if (act > 655 && power > 655) {
         const int n = 1 + (2 * power + 16384) / 32768, len = cable_len[0] * 36 >> 10;
         const unsigned pc = mix(a0, WHITE, 64 + (90 * act >> 15)), halo = shade(a0, 77);   /* the first's, lighter */

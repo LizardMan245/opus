@@ -1,5 +1,3 @@
-# opus.zoom: better zoom (Opus 1's): on the tape screen, shift + white zooms the tape view (clockwise in), 5 to 640
-# pixels a second; plain white keeps the tape's semitone speed.
 opmod     1
 id        opus.zoom
 name      Zoom

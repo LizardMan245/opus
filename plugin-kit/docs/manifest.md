@@ -29,7 +29,7 @@ This page lists every line a manifest may hold. The C side is in [api.md](api.md
 
 ## A first example
 
-The kit's `examples/opus.zoom`:
+The kit's `examples/opus.zoom`, with a comment on top saying what it does:
 
 ```
 # opus.zoom: on the tape screen, shift + white zooms the tape view (clockwise in).
@@ -50,6 +50,8 @@ uses      white_turn shift tape "zoom the tape view"
   end are dropped.
 - A `#` at the start of a line, or after a space or a tab, starts a comment to the end of the line. A `#` inside a
   word is not a comment, so a choice like `c#` works.
+- Comments are for you and the people who read your source: the build leaves them out of the `.opmod`, which
+  carries only the lines the core reads.
 - Blank lines are ignored.
 - Lines up to 159 characters: the core cuts a longer line there, so the build refuses one whose words (not its
   comment) reach past it.
@@ -74,6 +76,7 @@ uses      white_turn shift tape "zoom the tape view"
 | `uses` | | yes (12) | you | a control it takes |
 | `setting` | | yes (12) | you | a setting the user changes |
 | `theme` | | yes (4) | you | a colour theme it brings |
+| `recolour` | | yes (384) | you | a theme's stock colour and the colour it becomes (core 2.38) |
 | `place` | | yes | you | a hook into the firmware's code |
 | `cpu` | | | you write only `cpu user`; else the build | its audio CPU figure |
 | `adds` | | yes | you | what it adds, for people |
@@ -308,8 +311,12 @@ changes one itself with `opus_set_setting` (api.md, Settings).
 - A choice: the choices parted by commas, no spaces, up to 95 characters in all; each choice 1 or more of `a-z`, `0-9`,
   `_`, `#`, `/`, `+` and `-` (so `c#` and `6/9` work); `DEFAULT` must be one of them. The plugin gets the index of the
   chosen one, 0 for the first.
-- `"label"`: in double quotes at the end of the line, up to 23 characters, shown on the settings page (empty: the name
-  shows). Write it in lower case.
+- `"label"`: in double quotes, up to 23 characters, shown on the settings page (empty: the name shows). Write it in
+  lower case.
+- ` if OTHER=VALUE` (optional, after the label; core 2.36): the settings page shows the row only while the setting
+  `OTHER`, on an earlier line, has `VALUE` (one of its choices, or a number in its range). Use it for a setting that
+  only means something in one mode. A hidden setting keeps its value, the plugin reads it as any other, and the user's
+  file keeps it. A core older than 2.36 shows every row, so declare `core 2.36` when the rows would confuse there.
 
 A new version of a plugin keeps the user's values that still fit: a name it no longer offers, or a value outside its
 new range, is dropped and the default used.
@@ -319,6 +326,9 @@ setting   depth 1 16 8 "depth"
 setting   curve linear,smooth,ease_out,ease_in linear "bend curve"
 setting   root c,c#,d,d#,e,f,f#,g,g#,a,a#,b c "root"
 setting   drive off,on off "always driving"
+setting   tap single,double single "tap"
+setting   hold 0 1000 300 "hold ms" if tap=single
+setting   interval 100 1000 350 "interval ms" if tap=double
 ```
 
 ## Themes
@@ -337,6 +347,29 @@ with only a manifest is enough (see [Code-free plugins](#code-free-plugins)).
 
 ```
 theme     halloween 9b30ff 7fff00 e3dac9 ff7518
+```
+
+### `recolour` (repeatable, up to 384; core 2.38)
+
+```
+recolour  NAME RRGGBB RRGGBB
+```
+
+Makes the theme `NAME` (a `theme` line earlier in the manifest) a **palette theme**: any stock colour of the OP-1's
+screens, the first colour, becomes the second, wherever it is: every stock screen, the OS's palette, text, the
+font's coloured icons and every plugin page drawn in stock colours. A theme's four colours move only the encoders'
+colours and their shades; a palette theme also reaches the whites, greys and dark colours, and its line for a colour
+comes before what the four colours would make of it. A line with the same colour twice keeps that colour as it is (a
+shade of an encoder's colour the theme's four colours would otherwise move). The lines count while the theme is the
+one the user picked in the colours row and its four colours are unchanged; when the user changes one, the colours
+are "custom" and the lines stop. A colour the screens draw from code, not from their drawings, stays as it is. The
+lines need `core 2.38`: an older core lists the theme with its four colours only.
+
+```
+theme     refined 00dbff 77ed90 f0f7ed ff423f
+recolour  refined ffffff f0f7ed
+recolour  refined 383572 422649
+recolour  refined ff90a7 ff90a7
 ```
 
 ## Places
@@ -436,7 +469,7 @@ The build accepts these lines with any text, and the current core and build do n
 
 ## Lines the build writes
 
-The build adds these after a comment line of its own; they are in the `.opmod`, never in your `manifest.txt`. Writing
+The build adds these after your lines; they are in the `.opmod`, never in your `manifest.txt`. Writing
 one yourself is refused ("deep is written by the build"), except `cpu user`.
 
 | Line | Meaning |
@@ -478,8 +511,10 @@ after it) and checks everything before any code runs. A refused plugin shows the
 | `fn is the core's: a uses line's modifier` | `fn` or `help` used as the input |
 | `a setting line`, `a setting line's numbers` | a `setting` line is malformed, or its numbers out of order |
 | `a setting line's default` | a choice's default is not one of its choices |
+| `a setting line's if` | an `if` names no setting on an earlier line, or a value it cannot have (core 2.36) |
 | `too many setting lines` | more than 12 |
 | `a theme line`, `too many theme lines` | a `theme` line is malformed, or there are more than 4 |
+| `a recolour line`, `a recolour line's theme`, `too many recolour lines` | a `recolour` line is malformed, names no `theme` line before it, or there are more than 384 (core 2.38) |
 | `damaged: ...` | the file is damaged (its checksum, an offset, a size) |
 | `needs core 2.6` | the plugin's `core` line is newer than the core |
 | `an older copy` | another file with the same id has a newer version |

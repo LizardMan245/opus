@@ -18,19 +18,17 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for lib in (os.path.join(HERE, 'tools', 'op1mod'), os.path.join(HERE, '..', 'op1mod')):   # the kit's, the repository's
+for lib in (os.path.join(HERE, 'tools', 'op1mod'), os.path.join(HERE, '..', 'op1mod')):
     if os.path.isfile(os.path.join(lib, 'plugin.py')):
         sys.path.insert(0, os.path.normpath(lib))
         break
-import plugin  # noqa: E402
-from build import BuildError  # noqa: E402
-
+import plugin
+from build import BuildError
 
 def cmd_new(a):
     where = a.out or os.path.join(plugin.REPO, 'plugins', a.id)
     where = plugin.new(a.id, where, kit=True)
     print(f'{where}: manifest.txt, {a.id.split(".")[-1]}.c, README.md (README.md says what next)')
-
 
 def cmd_build(a):
     name = os.path.basename(os.path.normpath(a.dir)).split('.')[-1]
@@ -39,7 +37,6 @@ def cmd_build(a):
     r = plugin.build(a.dir, out)
     print(f'{out}: {r["id"]} {r["version"]}, {r["bytes"]} bytes, imports {", ".join(r["imports"]) or "none"}; '
           f'{r["link"]}')
-
 
 def cmd_show(a):
     info = plugin.read_opmod(open(a.file, 'rb').read())
@@ -54,9 +51,8 @@ def cmd_show(a):
         print(f'place {name}: {kind} 0x{addr:08x} -> image+0x{target:x}, expects {expect.hex()}'
               + (', switched' if sw else ''))
 
-
 def cmd_svg(a):
-    """svgcheck's errors (the OP-1 stops or the core refuses the file) and warnings (drawn otherwise, or dropped)."""
+
     import svgcheck
     bad = 0
     for path in a.files:
@@ -69,11 +65,8 @@ def cmd_svg(a):
         bad |= bool(errors)
     return 1 if bad else 0
 
-
 def strays(kit):
-    """Compilers lying where the lookup does not go: bfin-toolchain folders beside other copies of the kit (in the
-    kit's parent and grandparent and their folders, the home folder and its folders). One level deep each: fast, no
-    disk crawl."""
+
     import build
     out, roots = [], []
     home = os.path.expanduser('~')
@@ -92,9 +85,8 @@ def strays(kit):
                 out.append(c)
     return out
 
-
 def cmd_doctor(a):
-    """Is this computer ready to build plugins? Python, and where the compiler is (or where one lies unused)."""
+
     import build
     ok = sys.version_info >= (3, 8)
     print(f'python {sys.version.split()[0]}: ' + ('ok' if ok else 'too old: the kit needs 3.8 or later'))
@@ -126,7 +118,6 @@ def cmd_doctor(a):
           'again on this computer.')
     return 0 if ok else 1
 
-
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -148,7 +139,6 @@ def main(argv=None):
     except (plugin.PluginError, BuildError) as e:
         print(f'REFUSED: {e}')
         return 2
-
 
 if __name__ == '__main__':
     sys.exit(main())

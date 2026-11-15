@@ -1,4 +1,4 @@
-/* opus.outatime: a time-travel synth engine (2026-10-25: the starter pack's, made to show what Opus 2 can do). The
+/* opus.outatime: a time-travel synth engine, made to show what Opus 2 can do. The
  * sound, shaped on the device: no jump, the time drift for speed, a strong overdrive for power, the ignition for trail, the level kept
  * whatever the settings (ota_dsp.c). The controls, each lit in its encoder's colour:
  *
@@ -8,16 +8,13 @@
  *   orange  trail, the ignition      shift: the overdrive's type (warm, hard, tube, fold)
  *
  * The shift layer is knobs 5-7 (spread, flux, tone), kept with the sound as the four are; a shift turn moves its knob
- * 3 of 99 a detent. Tone is green's and flux white's (2026-10-26, from playing it); the knobs stay
+ * 3 of 99 a detent. Tone is green's and flux white's (from playing it); the knobs stay
  * where sounds keep them. The OS's envelope (T2) shapes the voices. The page
- * (ota_page.c): the time-machine art (v3), its instruments by meaning (2026-10-26); until its art is
+ * (ota_page.c): the time-machine art, its instruments by meaning; until its art is
  * ready the controls' names and values (lower case: the font's capitals are icons). Its setting "always
- * driving" (off; the mods list's blue push) keeps the car driving at the set speed with its fire, no key down
- * (2026-10-26). The overdrive's type (warm, hard, tube, fold; 2026-10-27) chooses power's shape: on shift +
- * orange (1.2, 2026-10-30: BarneyBrown's idea, op-forums t32014 #95: the drive type within the synth itself, as
- * something changed often), the sound's own since 1.3 (2026-10-30: kept with the sound and its presets, not
- * device-wide; a setting from 1.1 to 1.2): its engine data's byte, kept with the sound and its
- * presets; warm without one (a new sound). */
+ * driving" (off; the mods list's blue push) keeps the car driving at the set speed with its fire, no key down.
+ * The overdrive's type (warm, hard, tube, fold) chooses power's shape: on shift + orange, the sound's own (its
+ * engine data's byte, kept with the sound and its presets; warm without one, a new sound). */
 #include "opus_plugin.h"
 #include "op1fw.h"
 #include "ota_dsp.h"
@@ -39,8 +36,8 @@ struct voice {
     unsigned serial;                       /* its note's number: the newest's refreshes newest at its render */
 };
 static volatile unsigned newest_serial, serials;
-static struct opus_fast_lease *lease;      /* 1.4.0 (core 2.21): the era waves and the scratch on lease, fast while it
-                                              plays (priority high); 0 on an older core: fixed as before */
+static struct opus_fast_lease *lease;      /* the era waves and the scratch on lease, fast while it
+                                              plays (priority high); 0 on an older core: where they are */
 static volatile int held_n;
 static const struct ota_voice *volatile newest;
 static volatile unsigned blocks;
@@ -210,8 +207,8 @@ static const struct opus_engine OUTATIME = {
     /* a new sound: 1985, 18 mph, 0.31 gigawatts, trail 35; spread 40, flux 30, tone 50 (0-99) */
     .knobs = { 16549, 6620, 8274, 11584, 0, 13239, 9929, 16549 },
     .voice = sizeof(struct voice),
-    .flags = OPUS_ENGINE_STATE_MOVES,  /* 1.4.0: newest refreshed at each render */
-    .shift_knobs = { OTA_SPREAD, OTA_TONE, OTA_FLUX, -1 },   /* 1.4.1: its shift layer for an LFO (orange: the drive's
+    .flags = OPUS_ENGINE_STATE_MOVES,  /* newest refreshed at each render */
+    .shift_knobs = { OTA_SPREAD, OTA_TONE, OTA_FLUX, -1 },   /* its shift layer for an LFO (orange: the drive's
                                               type, in its data) */
     .init = v_init,
     .note_on = v_note_on,

@@ -1,15 +1,3 @@
-"""Blackfin instruction field offsets/masks.
-
-ORIGIN AND LICENCE
-    These constants were auto-extracted from `include/opcode/bfin.h` of GNU
-    binutils 2.38 (the `*_bits` / `*_mask` members of every instruction
-    format struct). binutils is Copyright (C) Free Software Foundation, Inc.
-    and is distributed under the GNU General Public License, version 3 or
-    later. This derived file is therefore also GPL-3.0-or-later. See
-    tools/re/README.md.
-
-    Ported unchanged from the legacy op1_246_mod_v2/re/bfconst.py.
-"""
 DSP32Mac_src1_bits = 0
 DSP32Mac_src1_mask = 0x7
 DSP32Mac_src0_bits = 3

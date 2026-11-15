@@ -111,4 +111,10 @@ void o3_seg_width(const int *xy, int n, int closed, int width, int on, int off);
  * comes first); the frame is written, never read, and what no trace lights keeps what was there. */
 void o3_traces(const int *const *ys, int n, int x0, int x1, const int *rgb, const int *width, int k);
 
+/* o3_traces_spans (0.2.7): o3_traces with each trace from its own x0[t] to x1[t], up to 64 of them in one pass. Draw
+ * every trace of a picture in one call: o3_traces called once a span writes each call's pixels over the ones before
+ * (a later trace's dim edge over an earlier bright line, a darker trace over a brighter one); in one pass the brighter
+ * keeps every pixel where any of them meet. */
+void o3_traces_spans(const int *const *ys, int n, const int *x0, const int *x1, const int *rgb, const int *width, int k);
+
 #endif

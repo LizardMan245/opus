@@ -144,6 +144,10 @@ Most of the API is in core 2.0. These came later; set `core` to the highest vers
 | 2.33 | an engine's `mark` claimed in 0x4F01-0x4FFF too; an effect's `aliases`; `opus_boot_picture` |
 | 2.34 | an effect's `page`: its page drawn by the core at the effect pages' layer, under other plugins' marks and the OP-1's popups |
 | 2.35 | `opus_on_frame_top`, `opus_text_width`, `opus_page_toast` |
+| 2.36 | a `setting` line's ` if OTHER=VALUE`: the row shown only while another setting has that value (manifest.md) |
+| 2.38 | the manifest's `recolour` lines: a palette theme, any stock colour to its own (manifest.md) |
+| 2.57 | `opus_drum_select_key`: the drum's current key set without playing it (2.37 and 2.39-2.56 hold later releases' calls, not public yet) |
+| 2.58 | `opus_on_line_input`: the line input's two sides before the OS sums them, read and changed |
 
 Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`, `svg`, `screen_init` and
 `screen_draw`; `struct opus_hosted_effect` and `opus_effect_host`.
@@ -497,6 +501,21 @@ void opus_skip_dry_input(void);
 Skips the OS's own dry input for this block. An engine that plays the audio input itself (an amp engine) calls it
 every block from its block handler, inside the audio interrupt only (a block rendered from a thread has the last
 interrupt's input), so the input is heard once.
+
+```c
+void opus_on_line_input(struct opl_self *self, void (*fn)(int *stereo, unsigned frames));
+```
+
+The line input as the codec sends it, before the OP-1 adds its two sides together (core 2.58). In the audio block,
+first: `stereo` holds the block's `frames` (64) frames as 128 words, left then right for each frame, each sample in
+the word's top 24 bits (the low byte is 0; full scale is +-2^31), 44.1 kHz. Right after it the OS sums left and right
+into its one input, which the input's monitoring, the sampler, the tape's recording and the input meter all use: what
+`fn` leaves in `stereo` is what they get, in that same block. A side set to 0 is gone from all of them; a side left
+alone passes as usual. Called only while the input source is the line input (the jack or the input menu), whatever
+the input's state (on, off or resample); not while the OP-1 is in COM mode. One handler a plugin (a second call
+replaces the first); register it in `opl_init`. The audio block's rules apply, and its time is charged to the plugin.
+For example a sync input on one side of the cable: read both sides to find the pulses, then zero that side so the
+clicks are not heard or recorded.
 
 ## Quick pages
 
@@ -1263,6 +1282,7 @@ Hundekraft's `.knl` files.
 if (opus_on_folder(self, &banks))
     opus_folder_adopt(self, &banks, ".syx");
 ```
+
 
 ## The boot picture
 
@@ -2085,6 +2105,17 @@ The drum's current key, 0-23 (the last note key played: the one T1's encoders tu
 as the current kit stores them, into `par` (core 2.24). For a drum engine's page. Any thread.
 
 ```c
+int opus_drum_select_key(int key);
+```
+
+Makes `key` (0-23) the drum's current key without playing it (core 2.57), as pressing that key and letting go would,
+but silent: nothing is held and the screen stays. From then on `opus_drum_key` and the drum's T1 (its encoders and its
+page, a stock kit's or a drum engine's) take that key, and edits save to it as usual, until a note key or a note
+played on the drum moves the current key again. Shift + a key plays it but leaves the current key where it was (the
+OP-1's own rule), so a sequencer that edits a pad with shift + its key calls this to make the drum's pages follow. 1,
+or 0 for a key outside 0-23. Any thread.
+
+```c
 static const short KIT[24][8] = { /* ... */ };
 static const struct opus_engine SIM = {            /* opus.sim */
     .size = sizeof (struct opus_engine),
@@ -2715,7 +2746,7 @@ unsigned opus_art_colours(void);
 ```
 
 A count that changes whenever the user's colours change (a pick, a theme). Compare it with the value you last saw:
-when it moved, set your colours and draw and keep the art again. Any thread.
+when it moved, find your colour slots again, set your colours and draw and keep the art again. Any thread.
 
 ```c
 void opus_sincos(int turn4096, int *s, int *c);
@@ -2834,6 +2865,8 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_clock` | [The clock](#the-clock) |
 | `opus_cpu_charge` | [CPU and the log](#cpu-and-the-log) |
 | `opus_drum_key` | [Engines](#drum-engines) |
+| `opus_drum_select_key` | [Engines](#drum-engines) |
+| `opus_on_line_input` | [Audio events](#audio-events) |
 | `opus_drums` | [Presets](#presets) |
 | `opus_effect_host` | [Another firmware's effects](#another-firmwares-effects) |
 | `opus_effect_live` | [Effects](#effects) |

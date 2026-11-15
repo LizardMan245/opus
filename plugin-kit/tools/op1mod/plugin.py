@@ -1,37 +1,3 @@
-"""Opus 2's plugin build: a plugin folder -> one .opmod file.
-
-    python plugin_tool.py build DIR [--out FILE.opmod]     (the kit's command)
-
-DIR holds manifest.txt and the plugin's C and assembly sources (*.c, *.s, *.S at its top level); a DIR with
-no sources builds a code-free .opmod (image size 0, flags without the code bit: its manifest is all it brings,
-a theme's `theme` lines, settings; 2026-10-21).  The
-sources are compiled as the core's are (build.CFLAGS) against the SDK: opus_plugin.h (the
-core's names) and op1fw.h in plugin form (the firmware's functions by name, no addresses: fwheader.py).
-Every name the plugin uses and does not define is an import.  A called import gets a stub in the image
-(`P1.L = lo; P1.H = hi; JUMP (P1)`, written here, its two halves relocations to the import), so the
-plugin's calls reach it by a relative branch and the image may land anywhere: the core's far homes lie
-beyond a call's ±16 MB.  The image is linked twice at two bases
-(opmod.link_two_bases: the relocation table checked byte for byte), and the file written:
-
-  header (0x60 bytes), the manifest (the author's lines and the built ones), the image (code and data,
-  as linked at the first base), imports (u32: each name's offset in the strings), relocations (12 bytes:
-  site | kind << 28 | zero fill << 30 | import << 31, target, value; the flags' FLAG_APART says the zero fill
-  marks are there, 2026-11-02), exports (8 bytes: name offset, offset in the image),
-  places (24 bytes: kind | expected length << 8, the firmware's address, the target's offset in the
-  image, the place's name offset, the 8 expected bytes), the strings; the CRC-32 of the whole file with
-  its own field 0.
-
-A place is a manifest line as the .hooks files have it:
-`place call|jump|ldimm|word|patch ADDRESS SYMBOL expect HEX [as NAME] [switched]`; the core checks the expected
-bytes and installs it at load (a call or jump: a 24-bit branch to SYMBOL; ldimm: the pair Rx.L/Rx.H loading
-SYMBOL's address; word: the 32-bit word at ADDRESS; patch, 2026-10-21: as many bytes as expected, 2 to 8, from
-SYMBOL's data in the image, such as tape undo's NOPs). A switched place (2026-10-25, core 2.1: a call, a word or a
-patch of 2 or 4 bytes) is checked and held at load but left stock; the plugin turns it on and off with
-opus_place_set (tape undo's loop jump behind a setting). The kind byte's bit 0x80 marks it.
-
-read_opmod() checks a file the way the core's loader does (every offset, size, relocation and import
-inside the file, the CRC) and is what the tests and `op1mod plugin --show` read with.
-"""
 import os
 import re
 import struct
@@ -44,62 +10,63 @@ from build import CFLAGS, tool, toolchain
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 SDK = next((d for d in (os.path.join(REPO, 'mods', 'opus2', 'sdk'), os.path.join(REPO, 'sdk')) if os.path.isdir(d)),
-           os.path.join(REPO, 'mods', 'opus2', 'sdk'))   # the repository's, or the authors' kit's
+           os.path.join(REPO, 'mods', 'opus2', 'sdk'))
 MAGIC = b'OPMD'
 FORMAT = 1
 HEADER = 0x60
 PLACE_KINDS = {'call': 0, 'jump': 1, 'ldimm': 2, 'word': 3, 'patch': 4}
 PLACE_NAMES = {v: k for k, v in PLACE_KINDS.items()}
-PLACE_SWITCHED = 0x80                      # in the kind byte: switched by its plugin (opus_place_set), not installed at load
+PLACE_SWITCHED = 0x80
 FLAG_CODE, FLAG_PACK, FLAG_LIBRARY = 1, 2, 4
-FLAG_APART = 8                             # its addresses into the zero fill marked (relocation bit 30, opmod.ZERO):
-                                           # a loader from dev 105 on may place the zero fill apart from the image (2026-11-02)
+FLAG_APART = 8
+
 REL_ZERO = 1 << 30
 KINDS = {'word': 0, 'lo': 1, 'hi': 2, 'call': 3}
 KIND_NAMES = {v: k for k, v in KINDS.items()}
-STUB_PREFIX = 'opimp_'                     # the import a stub loads: C name opimp_NAME, the plugin calls NAME
+STUB_PREFIX = 'opimp_'
 CALL_RELOCS = ('R_BFIN_PCREL24', 'R_BFIN_PCREL24_JUMP_L', 'R_BFIN_PCREL24_CALL_X')
 ID_RE = re.compile(r'^[a-z0-9_]+(\.[a-z0-9_]+)+$')
 VERSION_RE = re.compile(r'^\d+\.\d+(\.\d+)?$')
 REPEATED = ('needs', 'breaks', 'setting', 'place', 'replace', 'pack', 'uses', 'removes', 'adds', 'checked', 'theme',
-            'replaces', 'exports')            # exports on several lines (2026-11-03: orbit3d 0.2's outgrew 159 characters)
-THEMES_MAX = 4                             # loader.c THEMES_MAX
-NEEDS_MAX = 4                              # loader.c NEEDS_MAX
-LINE_MAX = 159                             # loader.c reads a manifest line into char line[160]
+            'replaces', 'exports',
+            'recolour')
+THEMES_MAX = 4
+RECOLOURS_MAX = 384
+RECOLOUR_RE = re.compile(r'^(\S.{0,30}?) +([0-9A-Fa-f]{6}) +([0-9A-Fa-f]{6})$')
+NEEDS_MAX = 4
+LINE_MAX = 159
 THEME_RE = re.compile(r'^(\S.{0,30}?) +([0-9A-Fa-f]{6}) +([0-9A-Fa-f]{6}) +([0-9A-Fa-f]{6}) +([0-9A-Fa-f]{6})$')
 REQUIRED = ('opmod', 'id', 'name', 'author', 'version', 'core')
-BUILT = ('deep', 'ram', 'imports', 'cpu')  # written by the build; refused in the author's manifest
+BUILT = ('deep', 'ram', 'imports', 'cpu')
 MAX_IMAGE = 1 << 20
-
 
 class PluginError(Exception):
     pass
 
-
-# ---------------------------------------------------------------- the manifest
-
 COMMENT_RE = re.compile(r'(?:^|(?<=[ \t]))#')
 
-
 def uncomment(raw):
-    """A manifest line without its comment: # at the start or after a space or tab (loader.c the same; 2026-10-21:
-    a choice like c# is a word), stripped."""
+
     return COMMENT_RE.split(raw, 1)[0].strip()
 
-
 def read_manifest(text):
-    """-> {key: value} (the repeated keys: lists); PluginError on a line the contract does not allow."""
+
     out = {}
     for n, raw in enumerate(text.splitlines(), 1):
         line = uncomment(raw)
         if not line:
             continue
-        if uncomment(raw[:LINE_MAX]) != line:  # the core reads 159 characters a line (loader.c's line[160])
+        if uncomment(raw[:LINE_MAX]) != line:
             raise PluginError(f'manifest line {n}: longer than the {LINE_MAX} characters the core reads')
         key, _, value = line.partition(' ')
         value = value.strip()
         if not re.match(r'^[a-z]+$', key) or not value:
             raise PluginError(f'manifest line {n}: "key value" expected, got {raw!r}')
+        if key == 'recolour':
+            m = RECOLOUR_RE.match(value)
+            before = [THEME_RE.match(t) for t in out.get('theme', [])]
+            if m and m.group(1) not in [t.group(1) for t in before if t]:
+                raise PluginError(f'manifest line {n}: recolour {value!r}: its theme line comes first')
         if key in REPEATED:
             out.setdefault(key, []).append(value)
         elif key in out:
@@ -116,11 +83,11 @@ def read_manifest(text):
     if not VERSION_RE.match(out['version']) or not VERSION_RE.match(out['core']):
         raise PluginError('manifest: version and core are numbers like 1.0.0 and 2.0')
     for key in BUILT:
-        if key in out and not (key == 'cpu' and out[key] == 'user'):   # 2026-10-25: a manager's own word
+        if key in out and not (key == 'cpu' and out[key] == 'user'):
             raise PluginError(f'manifest: {key} is written by the build')
-    if out.get('priority', 'normal') not in ('high', 'normal', 'low'):   # core 2.21: the shared fast memory's order
+    if out.get('priority', 'normal') not in ('high', 'normal', 'low'):
         raise PluginError(f'manifest: priority {out["priority"]!r}: high, normal or low')
-    if len(out.get('needs', [])) > NEEDS_MAX:     # the core reads 4 and would pass over the rest
+    if len(out.get('needs', [])) > NEEDS_MAX:
         raise PluginError(f'manifest: {len(out["needs"])} needs lines, the core reads {NEEDS_MAX}')
     for need in out.get('needs', []):
         w = need.split()
@@ -132,12 +99,13 @@ def read_manifest(text):
     for use in uses:
         check_use(use)
     settings = out.get('setting', [])
-    if 'none' in settings:                    # the core refuses it ("a setting line"): no setting is no line
+    if 'none' in settings:
         raise PluginError('manifest: setting none: leave the setting lines out instead')
     if len(settings) > SETTINGS_MAX:
         raise PluginError(f'manifest: {len(settings)} setting lines, the core keeps {SETTINGS_MAX}')
+    earlier = {}
     for setting in settings:
-        check_setting(setting)
+        check_setting(setting, earlier)
     themes = out.get('theme', [])
     if len(themes) > THEMES_MAX:
         raise PluginError(f'manifest: {len(themes)} theme lines, the core keeps {THEMES_MAX}')
@@ -145,17 +113,30 @@ def read_manifest(text):
         if not THEME_RE.match(theme):
             raise PluginError(f'manifest: theme {theme!r}: a name (up to 31 characters) and four colours as RRGGBB '
                               '(no #: it starts a comment), blue, green, white, orange')
+    recolours = out.get('recolour', [])
+    if len(recolours) > RECOLOURS_MAX:
+        raise PluginError(f'manifest: {len(recolours)} recolour lines, the core keeps {RECOLOURS_MAX}')
+    names = [THEME_RE.match(t).group(1) for t in themes]
+    seen = set()
+    for line in recolours:
+        m = RECOLOUR_RE.match(line)
+        if not m or m.group(1) not in names:
+            raise PluginError(f'manifest: recolour {line!r}: a theme line\'s name, then the stock colour and the '
+                              'colour it becomes as RRGGBB (no #)')
+        key = (m.group(1), m.group(2).lower())
+        if key in seen:
+            raise PluginError(f'manifest: recolour {line!r}: {m.group(2)} given twice for {m.group(1)}')
+        seen.add(key)
+    if recolours and tuple(int(x) for x in out['core'].split('.')[:2]) < (2, 38):
+        raise PluginError('manifest: recolour lines need core 2.38 (an older core lists the theme without them)')
     for checked in out.get('checked', []):
         check_checked(checked)
     return out
 
-
 CHECKED_RE = re.compile(r'^(emulator|device) (\d{4}-\d{2}-\d{2})(?: (.+))?$')
 
-
 def check_checked(line):
-    """`checked emulator|device YYYY-MM-DD [what: a test, a build, a note]` (from op1-sdk's catalog): where
-    and when the author saw the plugin work, shown by --show and --check; the core passes it over."""
+
     import datetime
     m = CHECKED_RE.match(line)
     try:
@@ -167,9 +148,8 @@ def check_checked(line):
     if m.group(3) and len(m.group(3)) > 60:
         raise PluginError(f'manifest: checked {line!r}: what was run in 60 characters at most')
 
-
 def checked_of(man):
-    """-> the latest `checked` line's text of each kind: {"emulator": "2026-10-16 test_bitcrush", ...}."""
+
     out = {}
     for line in man.get('checked', []):
         kind, _, rest = line.partition(' ')
@@ -177,15 +157,14 @@ def checked_of(man):
             out[kind] = rest
     return out
 
-
 SETTINGS_MAX = 12
 
+def check_setting(setting, earlier=None):
 
-def check_setting(setting):
-    """`NAME LOW HIGH DEFAULT "label"` or `NAME A,B,C DEFAULT "label"`, as the core reads it (loader.c)."""
-    m = re.match(r'^([^"]*)"([^"]*)"$', setting)
+    m = re.match(r'^([^"]*)"([^"]*)"(?:\s+if\s+([a-z0-9_]{1,15})=(\S+))?$', setting)
     w = m.group(1).split() if m else []
-    form = f'manifest: setting {setting!r}: NAME LOW HIGH DEFAULT "label" or NAME A,B,C DEFAULT "label"'
+    form = (f'manifest: setting {setting!r}: NAME LOW HIGH DEFAULT "label" or NAME A,B,C DEFAULT "label", then '
+            'optionally if OTHER=VALUE')
     if not m or len(w) not in (3, 4) or not re.match(r'^[a-z0-9_]{1,15}$', w[0]):
         raise PluginError(form)
     if len(m.group(2)) > 23:
@@ -198,29 +177,36 @@ def check_setting(setting):
         if not -32768 <= lo <= default <= hi <= 32767:
             raise PluginError(f'manifest: setting {setting!r}: LOW <= DEFAULT <= HIGH, within a short')
     else:
-        choices = w[1].split(',')         # the OP-1's font draws # and /: c#, 6/9 (2026-10-21)
+        choices = w[1].split(',')
         if len(w[1]) > 95 or not all(re.match(r'^[a-z0-9_#/+-]+$', c) for c in choices):
             raise PluginError(f'manifest: setting {setting!r}: choices a,b,c (a-z 0-9 _ # / + -), 95 characters at '
                               'most')
         if w[2] not in choices:
             raise PluginError(f'manifest: setting {setting!r}: the default {w[2]!r} is not one of the choices')
+    if m.group(3):
+        other = (earlier or {}).get(m.group(3))
+        if other is None:
+            raise PluginError(f'manifest: setting {setting!r}: if {m.group(3)}=...: no setting of that name on an '
+                              'earlier line')
+        lo, hi, choices = other
+        value = m.group(4)
+        ok = value in choices if choices else re.match(r'^-?\d+$', value) and lo <= int(value) <= hi
+        if not ok:
+            raise PluginError(f'manifest: setting {setting!r}: if {m.group(3)}={value}: not one of its '
+                              + ('choices' if choices else f'values ({lo} to {hi})'))
+    if earlier is not None:
+        earlier[w[0]] = (int(w[1]), int(w[2]), None) if len(w) == 4 else (0, 0, w[1].split(','))
 
-
-# The controls a `uses` line can name (the core's loader.c INPUTS: the OS's key codes, the encoders' turns, the
-# keyboard's note keys) and the screens.
 USES_MAX = 12
 USE_INPUTS = ('tempo', 'synth', 'drum', 'tape', 'mixer', 't1', 't2', 't3', 't4', 'lift', 'drop', 'split',
               's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 'seq', 'rec', 'play', 'stop', 'left', 'right', 'mic',
               'com', 'blue_push', 'green_push', 'white_push', 'orange_push', 'blue_turn', 'green_turn',
               'white_turn', 'orange_turn', 'keyboard', 'fn_hold')
 USE_SCREENS = ('synth', 'drum', 'tape', 'mixer')
-USE_PAGES = ('t1', 't2', 't3', 't4')      # after the input: the page (2026-10-23)
-
+USE_PAGES = ('t1', 't2', 't3', 't4')
 
 def check_use(use):
-    """`INPUT [shift | noshift] [fn | nofn] [with KEY] [synth | drum | tape | mixer] [t1 | t2 | t3 | t4] [modal] "what it
-    does"`, as the core reads it (fn: the core's FN held, the help key; 2026-10-17; with: a key held, 2026-10-21; a
-    page, 2026-10-23)."""
+
     m = re.match(r'^([^"]*)"([^"]*)"$', use)
     words = m.group(1).split() if m else []
     if not m or not words or not m.group(2).strip():
@@ -231,7 +217,7 @@ def check_use(use):
     if words[0] not in USE_INPUTS:
         raise PluginError(f'manifest: uses {use!r}: {words[0]!r} is no input ({", ".join(USE_INPUTS)})')
     rest = list(words[1:])
-    if 'with' in rest:                     # `with KEY`: only while that key is held (2026-10-21, tape + left)
+    if 'with' in rest:
         k = rest.index('with')
         held = rest[k + 1] if k + 1 < len(rest) else ''
         if held not in USE_INPUTS or held.endswith('_turn') or held == 'keyboard' or held == words[0]:
@@ -244,20 +230,16 @@ def check_use(use):
     if len(m.group(2)) > 27:
         raise PluginError(f'manifest: uses {use!r}: what it does in 27 characters at most')
 
-
-# ---------------------------------------------------------------- the build
-
 def _run(cmd):
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode:
         raise PluginError(f'{os.path.basename(cmd[0])} failed:\n{p.stdout}{p.stderr}')
     return p.stdout
 
-
 def compile_sources(tc, src_dir, out_dir):
-    """-> the objects of DIR's sources, compiled against the SDK and op1fw.h in plugin form."""
+
     import fwheader
-    if os.path.isfile(fwheader.FUNCTIONS):  # made from the function table; the kit has none: its sdk/op1fw.h is found
+    if os.path.isfile(fwheader.FUNCTIONS):
         with open(os.path.join(out_dir, 'op1fw.h'), 'w', newline='\n', encoding='utf-8') as f:
             f.write(fwheader.generate(plugin=True))
     sources = sorted(f for f in os.listdir(src_dir) if os.path.splitext(f)[1] in ('.c', '.s', '.S'))
@@ -271,10 +253,8 @@ def compile_sources(tc, src_dir, out_dir):
         objs.append(obj)
     return objs
 
-
 def called_imports(tc, objs):
-    """-> the undefined symbols some instruction calls or jumps to (they get a stub), not libgcc's (division and
-    the other helpers: linked into the image)."""
+
     libgcc = _run([tool(tc, 'gcc'), '-mcpu=bf524-any', '-print-libgcc-file-name']).strip()
     lib = {line.split()[-1] for line in _run([tool(tc, 'nm'), libgcc]).splitlines()
            if len(line.split()) == 3 and line.split()[1] in 'TtDdRrBb'}
@@ -289,11 +269,8 @@ def called_imports(tc, objs):
                 called.add(w[2].split('+')[0].split('-')[0])
     return sorted((undefined - defined - lib) & called)
 
-
 def write_stubs(names, path):
-    """An assembly file: for each called import NAME (its ELF name _NAME) a stub _NAME loading the import
-    _opimp_NAME into P1 and jumping there.  P1 is the caller's to lose at a call (GCC passes in
-    R0-R2 and keeps P3-P5)."""
+
     out = ['/* Generated by tools/op1mod/plugin.py: the stubs for the called imports. */', '        .text']
     for elf in names:
         c = elf[1:] if elf.startswith('_') else elf
@@ -303,9 +280,8 @@ def write_stubs(names, path):
     with open(path, 'w', newline='\n') as f:
         f.write('\n'.join(out) + '\n')
 
-
 def read_places(lines):
-    """The manifest's place lines -> [(kind, address, symbol, expected bytes, name, switched)]."""
+
     out = []
     for line in lines:
         w = line.split()
@@ -327,23 +303,18 @@ def read_places(lines):
         if len(expect) not in want or addr % 2:
             raise PluginError(f'place {line!r}: {w[0]} expects {" or ".join(map(str, want))} bytes at an even address')
         name = name or f'{w[0]}_{addr:08x}'
-        if switched and (w[0] in ('jump', 'ldimm') or len(expect) > 4):   # loader.c: one instruction or word
+        if switched and (w[0] in ('jump', 'ldimm') or len(expect) > 4):
             raise PluginError(f'place {line!r}: only a call, a word or a patch of 2 or 4 bytes can be switched')
         if switched and len(name) > 23:
             raise PluginError(f'place {line!r}: a switched place\'s name is 23 characters at most')
         out.append((w[0], addr, w[2], expect, name, switched))
     return out
 
-
 ORIG_RE = re.compile(r'^_orig_([0-9a-f]{8})$')
 NOT_MOVABLE = re.compile(r'\b(JUMP|CALL|RTS|RTI|RTX|RTN|RTE|LSETUP|LOOP|IDLE|RAISE|EXCPT)\b')
 
-
 def replay(addr, expect):
-    """The instructions a jump place covers, repeated in its way back (orig_ADDR): -> their texts. Refused
-    (PluginError) unless they are whole instructions that can run elsewhere: no target relative to the PC (a branch,
-    a call, a loop's setup), no other change of flow, nothing naming P0 (the way back jumps on with it, free at a
-    function's entry: GCC passes in R0-R2)."""
+
     _re_path()
     from op1re.bfdis import Dis, insn_length
     d, at, texts = Dis(), 0, []
@@ -365,10 +336,8 @@ def replay(addr, expect):
         at += n
     return texts
 
-
 def ways_back(tc, objs, places):
-    """-> [(symbol, address, expected bytes, texts)]: the orig_ADDR names the plugin uses (undefined in its objects),
-    each the way back of its jump place at ADDR."""
+
     defined, undefined = set(), set()
     for o in objs:
         for line in _run([tool(tc, 'nm'), o]).splitlines():
@@ -386,10 +355,8 @@ def ways_back(tc, objs, places):
         out.append((name, addr, jumps[addr], replay(addr, jumps[addr])))
     return out
 
-
 def write_ways(ways, path):
-    """An assembly file: each orig_ADDR repeats the bytes its place covers, then jumps on with P0 to ADDR + their
-    length (an absolute jump: the plugin may land beyond a branch's reach). As the core's effects_entry.S."""
+
     out = ['/* Generated by tools/op1mod/plugin.py: the jump places\' ways back. */', '        .text']
     for name, addr, expect, texts in ways:
         on = addr + len(expect)
@@ -400,12 +367,8 @@ def write_ways(ways, path):
     with open(path, 'w', newline='\n') as f:
         f.write('\n'.join(out) + '\n')
 
-
 def exports_of(tc, elf, base, wanted, local=False, image_size=None):
-    """-> [(name, offset in the image)] for the manifest's `exports` names (with local, static symbols too:
-    a place's target), from the link at `base`. With image_size: an offset at or past it must be a zero fill symbol
-    (nm's b, B) and one before it an image's, since the core takes an export's or a place's offset at or past the
-    image's size as the zero fill's (FLAG_APART): a label at the image's very end is refused."""
+
     have, kinds = {}, {}
     for line in _run([tool(tc, 'nm'), elf]).splitlines():
         w = line.split()
@@ -421,12 +384,10 @@ def exports_of(tc, elf, base, wanted, local=False, image_size=None):
             raise PluginError('a label at the image\'s end, neither code, data nor zero fill: ' + ', '.join(odd))
     return [(n, have[n]) for n in wanted]
 
-
 CPU_FILE = 'cpu.txt'
 
-
 def read_cpu(src_dir):
-    """The plugin's measured CPU figure (its worst audio block, cycles) from DIR/cpu.txt, or None (unmeasured)."""
+
     path = os.path.join(src_dir, CPU_FILE)
     if not os.path.exists(path):
         return None
@@ -436,12 +397,8 @@ def read_cpu(src_dir):
             return int(w[1])
     raise PluginError(f'{path}: no "cycles N" line')
 
-
 def cpu_from(src_dir, report_path, name='cpu'):
-    """DIR/cpu.txt from a test's report (an emulator test's `expect report cpu CYCLE ADDR`, the plugin's worst block): ->
-    the cycles written, the largest of its ok reports (a test whose starts each report their worst block, 2026-10-27:
-    outatime's power at full in a second start). The build turns it into the manifest's cpu line (measured, not by
-    hand)."""
+
     found = None
     for line in open(report_path, encoding='utf-8'):
         m = re.search(r'\breport ' + re.escape(name) + r' (\d+)\s*$', line)
@@ -458,9 +415,8 @@ def cpu_from(src_dir, report_path, name='cpu'):
         f.write('\n'.join(lines) + '\n')
     return found
 
-
 def build(src_dir, out_path, tc=None, work=None):
-    """-> a summary dict; writes out_path (.opmod)."""
+
     tc = toolchain(tc)
     with open(os.path.join(src_dir, 'manifest.txt'), encoding='utf-8') as f:
         author_text = f.read()
@@ -506,7 +462,7 @@ def build(src_dir, out_path, tc=None, work=None):
              f'ram       image {len(image)} zero {zero}',
              f'imports   {len(imports)}',
              f'cpu       {"user" if man.get("cpu") == "user" else read_cpu(src_dir) or "unmeasured"}']
-    manifest = (author_text.rstrip('\n') + AUTHOR_END + '\n'.join(built) + '\n').encode('utf-8')
+    manifest = packed_manifest(author_text, built)
     data = write_opmod(manifest, image, zero, entry, imports, relocs, exports, library=bool(wanted), places=places,
                        apart=True)
     with open(out_path, 'wb') as f:
@@ -515,27 +471,22 @@ def build(src_dir, out_path, tc=None, work=None):
             'imports': imports, 'stubs': [s.lstrip('_') for s in stubbed], 'exports': [n for n, _ in exports],
             'places': [p[4] for p in places], 'ways': [w[0][1:] for w in ways], 'link': summary}
 
-
 def build_code_free(out_path, man, author_text):
-    """A DIR without sources -> a code-free .opmod (§3: image size 0; no imports, places or exports)."""
+
     for key in ('place', 'exports'):
         if key in man:
             raise PluginError(f'manifest: {key} lines need code, and this plugin has no sources')
     built = ['deep      none', 'ram       image 0 zero 0', 'imports   0', 'cpu       0']
-    manifest = (author_text.rstrip('\n') + AUTHOR_END + '\n'.join(built) + '\n').encode('utf-8')
+    manifest = packed_manifest(author_text, built)
     data = write_opmod(manifest, b'', 0, 0, [], [], code=False)
     with open(out_path, 'wb') as f:
         f.write(data)
     return {'id': man['id'], 'version': man['version'], 'bytes': len(data), 'image': 0, 'zero': 0,
             'imports': [], 'stubs': [], 'exports': [], 'places': [], 'ways': [], 'link': 'code-free: nothing linked'}
 
-
-# ---------------------------------------------------------------- the file
-
 def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), library=False, places=(), code=True,
                 apart=False):
-    """-> the .opmod bytes (the layout in the module's docstring). apart: the relocations name opmod.ZERO for
-    every address into the zero fill (the build's link_two_bases checked it), so the flag FLAG_APART is set."""
+
     strings, offsets = bytearray(), {}
 
     def s(name):
@@ -570,7 +521,7 @@ def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), libra
     head += struct.pack('<II', zero, entry)
     head += struct.pack('<II', offs[2], len(imports))
     head += struct.pack('<II', offs[3], len(relocs))
-    head += struct.pack('<II', 0, 0)                          # resources: none yet
+    head += struct.pack('<II', 0, 0)
     head += struct.pack('<II', offs[6], len(strings))
     head += struct.pack('<II', flags, 0)
     head += struct.pack('<II', offs[4], len(exports))
@@ -580,10 +531,8 @@ def write_opmod(manifest, image, zero, entry, imports, relocs, exports=(), libra
     struct.pack_into('<I', data, 0x0C, zlib.crc32(bytes(data)) & 0xFFFFFFFF)
     return bytes(data)
 
-
 def read_opmod(data):
-    """The core loader's checks, in Python -> {manifest, image, zero, entry, imports, relocs, exports, flags};
-    PluginError naming the first thing wrong."""
+
     if len(data) < HEADER or data[:4] != MAGIC:
         raise PluginError('not an .opmod')
     fmt, hsize, size, crc = struct.unpack_from('<HHII', data, 4)
@@ -632,7 +581,7 @@ def read_opmod(data):
             raise PluginError(f'relocation {i}: no import {target}')
         if not imported and not 0 <= value <= img_len + zero:
             raise PluginError(f'relocation {i} points outside the image')
-        if in_zero and (imported or kind == 3 or not flags & FLAG_APART):   # loader.c check: the same refusals
+        if in_zero and (imported or kind == 3 or not flags & FLAG_APART):
             raise PluginError(f'relocation {i}: damaged (its zero fill mark)')
         relocs.append((site, KIND_NAMES[kind], imports[target] if imported else opmod.ZERO if in_zero else None,
                        value))
@@ -648,7 +597,7 @@ def read_opmod(data):
         kind, sw, n = kl & 0x7F, bool(kl & PLACE_SWITCHED), kl >> 8
         if kind not in PLACE_NAMES or not 2 <= n <= 8 or target >= img_len + zero or addr % 2:
             raise PluginError(f'place {i}: damaged')
-        if PLACE_NAMES[kind] == 'patch' and (n % 2 or target + n > img_len):   # loader.c: its bytes, set ones
+        if PLACE_NAMES[kind] == 'patch' and (n % 2 or target + n > img_len):
             raise PluginError(f'place {i}: damaged (a patch\'s bytes outside the image)')
         if sw and (PLACE_NAMES[kind] in ('jump', 'ldimm') or n > 4):
             raise PluginError(f'place {i}: damaged (switched)')
@@ -659,12 +608,50 @@ def read_opmod(data):
             'zero': zero, 'entry': entry, 'imports': imports, 'relocs': relocs, 'exports': exports, 'flags': flags,
             'places': places, 'strings': str_len}
 
-
 AUTHOR_END = '\n# built by op1mod plugin\n'
 
+def packed_manifest(author_text, built):
+
+    lines = [uncomment(raw) for raw in author_text.splitlines()]
+    return ('\n'.join([line for line in lines if line] + built) + '\n').encode('utf-8')
+
+def author_lines(text):
+
+    if AUTHOR_END in text:
+        return text.split(AUTHOR_END)[0]
+    return '\n'.join(raw for raw in text.splitlines() if uncomment(raw).split(' ', 1)[0] not in BUILT)
+
+def without_comments(data):
+
+    read_opmod(data)
+    man_off, man_len = struct.unpack_from('<II', data, 0x10)
+    if man_off != HEADER:
+        raise PluginError('the manifest is not first after the header')
+    lines = [uncomment(raw) for raw in data[man_off:man_off + man_len].decode('utf-8').splitlines()]
+    manifest = ('\n'.join(line for line in lines if line) + '\n').encode('utf-8')
+    old_end = man_off + man_len + (-man_len % 4)
+    new = manifest + b'\0' * (-len(manifest) % 4)
+    delta = HEADER + len(new) - old_end
+    head = bytearray(data[:HEADER])
+    struct.pack_into('<I', head, 0x14, len(manifest))
+    for at in (0x18, 0x28, 0x30, 0x38, 0x40, 0x50, 0x58):
+        off = struct.unpack_from('<I', head, at)[0]
+        if off >= old_end:
+            struct.pack_into('<I', head, at, off + delta)
+        elif off:
+            raise PluginError(f'an offset ({off:#x}) inside the manifest')
+    out = bytearray(bytes(head) + new + data[old_end:])
+    struct.pack_into('<I', out, 0x08, len(out))
+    struct.pack_into('<I', out, 0x0C, 0)
+    struct.pack_into('<I', out, 0x0C, zlib.crc32(bytes(out)) & 0xFFFFFFFF)
+    a, b = read_opmod(data), read_opmod(bytes(out))
+    if any(a[k] != b[k] for k in a if k not in ('manifest', 'text')) or \
+            read_manifest_built(a['text']) != read_manifest_built(b['text']):
+        raise PluginError('the file read back differs beyond its manifest\'s comments')
+    return bytes(out)
 
 def read_manifest_built(text):
-    """A built manifest: the author's lines and the build's (which read_manifest refuses from an author)."""
+
     out = {}
     for raw in text.splitlines():
         line = uncomment(raw)
@@ -676,20 +663,14 @@ def read_manifest_built(text):
                 out[key] = value.strip()
     return out
 
-
-# ---------------------------------------------------------------- a set of files, as a start would load them
-
 CORE = os.path.join(REPO, 'mods', 'opus2')
 LDR = os.path.join(REPO, 'firmware', 'OP1_vdk.ldr')
-FAR_POOL = 0x00400000                      # loader.c POOL_LO..POOL_HI, shared with opus_alloc
+FAR_POOL = 0x00400000
 FX_PLACE_RE = re.compile(r'\{\s*(0x[0-9A-Fa-f]+),\s*P_(CALL|JUMP|LDIMM|WORD),\s*(\d+),\s*\(u32\)\w+,\s*\{([^}]*)\}\s*\}')
-PAGE_PLACE_RE = re.compile(r'\{\s*(0x[0-9A-Fa-f]+),\s*(\d+),\s*\(u32\)fxhost_\w+,\s*\{([^}]*)\}\s*\}')   # fxhost.c: jumps
-
+PAGE_PLACE_RE = re.compile(r'\{\s*(0x[0-9A-Fa-f]+),\s*(\d+),\s*\(u32\)fxhost_\w+,\s*\{([^}]*)\}\s*\}')
 
 def core_facts(core=CORE):
-    """What the core's sources allow a start: its version (loader.c CORE_MAJOR, CORE_MINOR), its names (CORE_NAMES),
-    the plugins at once (opus.h OPUS_PLUGINS), the effect service's places (effects.c PLACES), the instance service's
-    page places (fxhost.c PLACES, 2026-10-25) and the firmware bytes its own hooks change (every .hooks file)."""
+
     import hooks
 
     def text(name):
@@ -714,29 +695,22 @@ def core_facts(core=CORE):
             'names': names, 'plugins': plugins_cap(opus_h),
             'fx': fx, 'pages': pages, 'held': held}
 
-
 def plugins_cap(opus_h):
-    """How many plugin files a start lists: OPUS_PLUGINS in an older core (60 until dev 110); none since dev 110's
-    tables sized by the files found (9f891de), so no file is ever over it."""
+
     m = re.search(r'#define OPUS_PLUGINS\s+(\d+)', opus_h)
     return int(m.group(1)) if m else 1 << 30
 
-
 def written(kind, addr, n=4):
-    """The bytes a place's install changes (loader.c opus_place_write): a branch's or a word's 4, an address load's
-    two immediates."""
+
     return ([addr + 2, addr + 3, addr + 6, addr + 7] if kind == 'ldimm' else
             [addr + k for k in range(n if kind == 'patch' else 4)])
-
 
 def _version(text, parts=3):
     v = [int(x) for x in text.split('.')]
     return tuple(v + [0] * (parts - len(v)))
 
-
 def _uses(lines):
-    """`uses` lines -> [(input, shift 0/1/2, screen 0-4, modal, fn 0/1/2, with: a held key or '')] as loader.c's
-    use_line reads them."""
+
     out = []
     for use in lines:
         if use == 'none':
@@ -753,37 +727,26 @@ def _uses(lines):
         out.append((words[0], shift, screen, 'modal' in words, fn, held, page))
     return out
 
-
 def _re_path():
-    """tools/re on the path (op1re: the LDR's memory)."""
+
     import sys
     here = os.path.join(REPO, 'tools', 're')
     if here not in sys.path:
         sys.path.insert(0, here)
 
-
 DAMAGE = (('not an .opmod', 'not an opmod file'), ('format', 'a newer file format'), ('file size', 'damaged: its size'),
           ('CRC', 'damaged: its crc'), ('image, zero', 'damaged: its image'), ('a name outside', 'damaged: its names'),
           ('relocation', 'damaged: a relocation'), ('export', 'damaged: an export'), ('place', 'damaged: a place'))
 
-
 def damage_words(message):
-    """read_opmod's refusal in the core's words (loader.c check); a manifest's in the build's."""
+
     for start, words in DAMAGE:
         if message.startswith(start):
             return words
     return 'damaged: a table outside the file' if 'outside the file' in message else message
 
-
 def check_set(paths, ldr=LDR, core=CORE):
-    """Would these .opmod files load together? The core's start in Python (loader.c load_all, load, uses_clash,
-    places_check; effects.c start): the files in their names' order (the first OPUS_PLUGINS), each read and checked,
-    its core version, one id twice (the newer loads), libraries before the plugins that need them, a control a
-    plugin loaded before takes, the imports, the room, each place against the firmware as the core and the plugins
-    loaded before left it, the effect service's places when a plugin imports opus_effect_register or opus_fx_manager,
-    and the instance service's page places with the first manager.
-    -> [{file, id, version, state: loads | refused | not listed, why, notes}] in the mods list's order. Not known
-    before a start: each init's result, opus_alloc's room, the skip marks and the safe start."""
+
     _re_path()
     import fwheader
     from op1re import load as load_ldr
@@ -804,7 +767,7 @@ def check_set(paths, ldr=LDR, core=CORE):
         try:
             with open(p, 'rb') as h:
                 info = read_opmod(h.read())
-            man = read_manifest(info['text'].split(AUTHOR_END)[0])
+            man = read_manifest(author_lines(info['text']))
         except OSError:
             f['state'], f['why'] = 'refused', 'cannot read its file'
             continue
@@ -819,20 +782,19 @@ def check_set(paths, ldr=LDR, core=CORE):
         if core_ver[0] != facts['core'][0] or core_ver[1] > facts['core'][1]:
             f['state'], f['why'] = 'refused', f'needs core {core_ver[0]}.{core_ver[1]}'
     live = [f for f in rows if f['state'] is None]
-    for f in live:                         # one id twice: the newer version loads
+    for f in live:
         for g in live:
             if f is not g and f['state'] is None and g['state'] is None and f['id'] == g['id'] and \
                     (f['ver'] < g['ver'] or (f['ver'] == g['ver'] and rows.index(f) > rows.index(g))):
                 f['state'], f['why'] = 'refused', 'an older copy'
-    for g in [f for f in rows if f['state'] is None]:   # `replaces`: the plugins it takes the place of (loader.c replaced)
+    for g in [f for f in rows if f['state'] is None]:
         for f in rows:
             if f is not g and f.get('id') and f['id'] != g['id'] and f['id'] in g['replaces']:
                 f['state'], f['why'] = 'refused', f'replaced by {g["name"]}'
-    held = dict(facts['held'])             # a firmware byte -> who changed it
-    exports, used = set(), [0, 0, 0]       # the libraries' names; the room taken, the effect service, the instance
-                                           # service's pages (each 1 on, -1 not)
+    held = dict(facts['held'])
+    exports, used = set(), [0, 0, 0]
 
-    def own_page(f, page):                 # an engine's T1, an effect's T3, an LFO type's T4 (loader.c own_page)
+    def own_page(f, page):
         return {1: 'engine', 3: 'effect', 4: 'lfo'}.get(page) in f.get('kinds', ())
 
     def clash(f):
@@ -872,7 +834,7 @@ def check_set(paths, ldr=LDR, core=CORE):
                 if (w0 & 0xFFC0) != 0xE100 or (w1 & 0xFFC0) != 0xE140 or (w0 & 0x3F) != (w1 & 0x3F):
                     return f'place {name} is no address load'
         used[0] += need
-        if ({'opus_effect_register', 'opus_fx_manager'} & set(info['imports'])) and not used[1]:   # its init starts the effect service
+        if ({'opus_effect_register', 'opus_fx_manager'} & set(info['imports'])) and not used[1]:
             for kind, addr, want in facts['fx']:
                 at = [a for a in range(addr, addr + len(want)) if a in held]
                 if at or stock(addr, len(want)) != want:
@@ -885,7 +847,7 @@ def check_set(paths, ldr=LDR, core=CORE):
                 for kind, addr, _ in facts['fx']:
                     for a in written(kind, addr):
                         held[a] = 'the effect service'
-        if 'opus_fx_manager' in info['imports'] and used[1] > 0 and not used[2]:   # the first manager: the pages
+        if 'opus_fx_manager' in info['imports'] and used[1] > 0 and not used[2]:
             for kind, addr, want in facts['pages']:
                 at = [a for a in range(addr, addr + len(want)) if a in held]
                 if at or stock(addr, len(want)) != want:
@@ -898,7 +860,7 @@ def check_set(paths, ldr=LDR, core=CORE):
                 for kind, addr, want in facts['pages']:
                     for a in written(kind, addr, len(want)):
                         held[a] = 'the instance service'
-        for kind, addr, _, expect, name, _ in info['places']:   # installed after its init (switched: held while stock)
+        for kind, addr, _, expect, name, _ in info['places']:
             over = [a for a in written(kind, addr, len(expect)) if held.get(a) == 'the effect service']
             if over:
                 f['notes'].append(f"place {name} writes over the effect service's place at 0x{over[0]:08x}")
@@ -908,7 +870,7 @@ def check_set(paths, ldr=LDR, core=CORE):
         return None
 
     progress = True
-    while progress:                        # libraries before the plugins that need them
+    while progress:
         progress = False
         for f in rows:
             if f['state'] is not None:
@@ -920,8 +882,8 @@ def check_set(paths, ldr=LDR, core=CORE):
                     if g['id'] == nid:
                         if g['state'] is None:
                             pending = True
-                        elif g['state'] == 'loads' and g['ver'] >= nver:   # all three numbers, as loader.c's
-                            # ver_cmp (2026-11-09: with only two kept, `needs opus.orbit3d 0.2.6` never passed)
+                        elif g['state'] == 'loads' and g['ver'] >= nver:
+
                             ok = True
                 if not ok:
                     ready = False
@@ -933,17 +895,14 @@ def check_set(paths, ldr=LDR, core=CORE):
                 why = clash(f) or load(f)
                 f['state'], f['why'] = ('refused', why) if why else ('loads', None)
                 progress = True
-    for f in rows:                         # a cycle of needs
+    for f in rows:
         if f['state'] is None:
             f['state'], f['why'] = 'refused', 'needs a plugin that needs it'
     for f in rows:
         f.pop('info', None)
         if f['why']:
-            f['why'] = f['why'].lower()    # as the mods list shows it (loader.c row_set)
+            f['why'] = f['why'].lower()
     return rows
-
-
-# ---------------------------------------------------------------- a new plugin's folder
 
 NEW_MANIFEST = """# @ID@: what it does, in a line.
 opmod     1
@@ -1005,7 +964,7 @@ int opl_init(struct opl_self *self)
 }
 """
 
-NEW_TEST = NEW_README = None              # the repository's own, below (the authors' kit has KIT_README)
+NEW_TEST = NEW_README = None
 
 KIT_README = """# @ID@
 
@@ -1021,11 +980,8 @@ A new Opus 2 plugin, written by `python plugin_tool.py new @ID@`. Commands from 
 What it can call: docs/api.md; its manifest's lines: docs/manifest.md; the rules every plugin keeps: docs/rules.md.
 """
 
-
 def new(plugin_id, where=None, kit=False):
-    """`op1mod plugin new ID`: a working plugin folder (manifest.txt, a source, test.txt, README.md) at `where`
-    (default the repository's plugins folder, ID) -> the folder. Refused when the id is not author.plugin or the folder exists.
-    kit: the authors' kit's (plugin_tool.py): its README, no emulator test (the kit has no emulator yet)."""
+
     if not ID_RE.match(plugin_id) or len(plugin_id) > 47:
         raise PluginError(f'{plugin_id!r}: an id is author.plugin, a-z 0-9 _ and dots, up to 47 characters')
     where = where or os.path.join(REPO, 'mods', 'opus2', 'plugins', plugin_id)
@@ -1034,7 +990,7 @@ def new(plugin_id, where=None, kit=False):
     author, last = plugin_id.split('.')[0], plugin_id.split('.')[-1]
     try:
         rel = os.path.relpath(where, REPO).replace(os.sep, '/')
-    except ValueError:                     # another drive: the test's put takes the whole path
+    except ValueError:
         rel = os.path.abspath(where).replace(os.sep, '/')
     words = {'@ID@': plugin_id, '@NAME@': last.replace('_', ' ').capitalize()[:31], '@AUTHOR@': author,
              '@FILE@': last, '@REL@': rel, '@ABS@': os.path.join(os.path.abspath(where), 'test.txt').replace(os.sep, '/')}

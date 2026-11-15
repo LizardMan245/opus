@@ -1,4 +1,4 @@
-/* outatime's sound, shaped on the device (2026-10-25): speed a constant time-travel morph rather than a jump effect,
+/* outatime's sound, shaped on the device: speed a constant time-travel morph rather than a jump effect,
  * power a strong overdrive rather than electric sparks, a level that stays even when the settings change; time drift
  * for speed, ignition for trail. Plain C, no SDK: the engine (outatime.c) and a renderer on the computer build the
  * same file; every curve a table (make_tables.py: the
@@ -36,6 +36,10 @@
 
 static const short *bank = &WAVES_BANK[0][0];   /* the era waves: in fast memory once ota_fast had some */
 
+#ifdef __bfin__
+unsigned ota_arm_bf(short *sum, const short *a, unsigned p, unsigned s, unsigned uw, int add);   /* ota_kernel.S */
+#endif
+
 static short scratch_sdram[128];
 static short *scratch = scratch_sdram;     /* the arms' sum, a voice block: in fast memory once ota_fast had some */
 
@@ -50,7 +54,7 @@ void ota_fast(short *to)
     scratch = to + OTA_WAVES * OTA_WLEN;
 }
 
-/* The bank and the scratch where they are this block (1.4.0, core 2.21: on lease): no copy. */
+/* The bank and the scratch where they are this block (on lease): no copy. */
 void ota_fast_at(short *at)
 {
     if (!at)
@@ -169,7 +173,11 @@ void ota_render(struct ota_voice *v, short *out, const short *par, unsigned pitc
      * 9 of them the stack's); a pass each holds a few. sum is in fast memory (L1) when the engine gave some: out, the
      * engine service's buffer, is written once a sample. */
     short *const sum = scratch;
-    for (int k = 0; k < 3; ++k) {          /* the first arm sets sum, the others add (1.1.3: a loop each, not a test a
+#ifdef __bfin__
+    for (int k = 0; k < 3; ++k)            /* the arms' passes in assembly, the same samples (ota_kernel.S) */
+        v->ph[k] = ota_arm_bf(sum, wa[k], v->ph[k], st[k], (unsigned)(32768 - ww[k]) << 16 | (unsigned)ww[k], k);
+#else
+    for (int k = 0; k < 3; ++k) {          /* the first arm sets sum, the others add (a loop each, not a test a
                                               sample; the next era's wave read from the same pointer: era's b is a's
                                               next wave) */
         unsigned p = v->ph[k];
@@ -191,6 +199,7 @@ void ota_render(struct ota_voice *v, short *out, const short *par, unsigned pitc
             }
         v->ph[k] = p;
     }
+#endif
     int low = v->low, band = v->band;
     for (int i = 0; i < 128; ++i) {
         const int x = sum[i];              /* a quarter of the sum */
@@ -272,10 +281,10 @@ void drive_loop(struct ota_fx *f, short *buf, int drive, int g0, int g1, int s)
         const int x = buf[i];
         in += (((x < 0 ? -x : x) << 8) - in) >> FOLLOW;
         const int y = shape((x * drive) >> 8, s);
-        /* 1.4.3: the leak and the fizz's step rounded away from 0, so each always moves toward its target and a
+        /* the leak and the fizz's step rounded away from 0, so each always moves toward its target and a
            silence ends at 0 (rounded down, the blocker's state stuck at any positive value under 32768 / DC_LEAK, about
            697, and the lowpass at -1: a constant of over a hundred after every note, into the effects after it, for
-           ever; within 1 of 32,768 of the old values while playing) */
+           ever) */
         const int k = DC_LEAK * hp_y;
         const int h = y - hp_x + hp_y - (k > 0 ? (k + 32767) >> 15 : -((32767 - k) >> 15));
         hp_x = y;
@@ -313,7 +322,7 @@ void ota_block(struct ota_fx *f, short *buf, const short *par)
         g0 = target;
     }
     const int g1 = g0 + (target < g0 ? (target - g0) >> 1 : (target - g0) >> 2);   /* down in 2 blocks, up in 4 */
-    switch (s) {                           /* one loop per shape (1.1.3: the shape's choice made once, not a sample) */
+    switch (s) {                           /* one loop per shape (the shape's choice made once, not each sample) */
     case OTA_HARD: drive_loop(f, buf, drive, g0, g1, OTA_HARD); break;
     case OTA_TUBE: drive_loop(f, buf, drive, g0, g1, OTA_TUBE); break;
     case OTA_FOLD: drive_loop(f, buf, drive, g0, g1, OTA_FOLD); break;

@@ -1,34 +1,5 @@
-"""Blackfin disassembler -- a Python port of GNU binutils opcodes/bfin-dis.c.
+from .bfconst import *
 
-ORIGIN AND LICENCE
-    The decoder structure, field extraction and mnemonic rendering below are
-    a line-for-line port of `opcodes/bfin-dis.c` from GNU binutils 2.38
-    (Copyright (C) Free Software Foundation, Inc., GPL-3.0-or-later). Field
-    offsets/masks come from bfconst.py, which was auto-extracted from
-    `include/opcode/bfin.h` of the same release. This file is therefore a
-    derived work under the GNU General Public License, version 3 or later.
-    See tools/re/README.md.
-
-    Ported from the legacy op1_246_mod_v2/re/bfdis.py with these changes:
-      * package-relative import of bfconst
-      * `disasm()` takes any object exposing `read(mem, size)` and `segs`
-        (see op1re.ldr.Image); reads are clamped to the loaded segment so a
-        decode near a segment tail never sees the next block's header.
-
-The decoders below mirror the C control flow one-for-one. The dsp32*
-parallel-DSP groups are recognised only well enough to get the instruction
-length right (and to render the common dsp32alu add/sub/min/max/abs forms);
-the rest render as <dsp32...>.
-
-Instruction length depends only on iw0:
-    32-bit iff (iw0 & 0xc000) == 0xc000 and (iw0 & 0xff00) != 0xf800
-    64-bit (multi-issue) iff 32-bit and BIT_MULTI_INS (0x0800) set and not
-    an 0xE8xx linkage/loop op
-"""
-from .bfconst import *  # noqa: F401,F403
-
-
-# ---------------------------------------------------------------- registers
 DREGS      = [f'R{i}' for i in range(8)]
 DREGS_LO   = [f'R{i}.L' for i in range(8)]
 DREGS_HI   = [f'R{i}.H' for i in range(8)]
@@ -62,7 +33,6 @@ STATBITS = ['AZ', 'AN', 'AC0_COPY', 'V_COPY', BAD, BAD, 'AQ', BAD,
             'V', 'VS', BAD, BAD, BAD, BAD, BAD, BAD]
 COUNTERS = ['LC0', 'LC1']
 
-
 def dregs(x):      return DREGS[x & 7]
 def dregs_lo(x):   return DREGS_LO[x & 7]
 def dregs_hi(x):   return DREGS_HI[x & 7]
@@ -78,11 +48,9 @@ def regs_hi(x, i): return REGS_HI[((i << 3) | x) & 31]
 def statbits(x):   return STATBITS[x & 31]
 def counters(x):   return COUNTERS[x & 1]
 
-
 def allregs(x, i):
     j = (i << 3) | x
     return ALLREGS[j] if j < len(ALLREGS) else BAD
-
 
 def IS_DREG(g, r): return g == 0 and r < 8
 def IS_PREG(g, r): return g == 1 and r < 8
@@ -90,9 +58,6 @@ def IS_RESERVEDREG(g, r): return r > 7 or (g == 4 and r in (4, 5)) or g == 5
 def allreg(r, g):  return not IS_RESERVEDREG(g, r)
 def mostreg(r, g): return not (IS_DREG(g, r) or IS_PREG(g, r) or IS_RESERVEDREG(g, r))
 
-
-# ------------------------------------------------------------ constant fmts
-# name -> (nbits, reloc, issigned, pcrel, scale, offset, negative, decimal)
 CF = {
     'pcrel4':    (4, 1, 0, 1, 1, 0, 0, 0),
     'imm3':      (3, 0, 1, 0, 0, 0, 0, 0),
@@ -117,14 +82,12 @@ CF = {
     'pcrel24':   (24, 1, 1, 1, 1, 0, 0, 0),
 }
 
-
 def _signext(v, n):
     sb = 1 << (n - 1)
     return ((v & ((sb << 1) - 1)) ^ sb) - sb
 
-
 def cval(fmt, x, pc=0):
-    """Numeric value of a constant field (binutils fmtconst / fmtconst_val)."""
+
     nbits, reloc, issigned, pcrel, scale, offset, negative, decimal = CF[fmt]
     if reloc:
         if pcrel:
@@ -139,9 +102,8 @@ def cval(fmt, x, pc=0):
         x = _signext(x, nbits)
     return (x + offset) << scale
 
-
 def cs(fmt, x, pc=0):
-    """Printable form of a constant field."""
+
     v = cval(fmt, x, pc)
     nbits, reloc, issigned, pcrel, scale, offset, negative, decimal = CF[fmt]
     if reloc:
@@ -152,29 +114,20 @@ def cs(fmt, x, pc=0):
         return f'-0x{-v:x}'
     return f'0x{v:x}'
 
-
-# ------------------------------------------------------------------ decoder
 class Insn:
     __slots__ = ('addr', 'length', 'text', 'kind', 'target', 'iw0', 'iw1', 'comment')
 
     def __init__(self, addr, length, text, kind=None, target=None,
                  iw0=0, iw1=0, comment=''):
         self.addr, self.length, self.text = addr, length, text
-        self.kind, self.target = kind, target   # call/callr/jump/jumpr/cjump/ret
+        self.kind, self.target = kind, target
         self.iw0, self.iw1, self.comment = iw0, iw1, comment
 
     def __repr__(self):
         c = ('   ; ' + self.comment) if self.comment else ''
         return f'0x{self.addr:08x}  {self.text}{c}'
 
-
 class Dis:
-    """Stateful decoder.
-
-    Tracks register values across instructions so that split
-    'Rn.L = lo ; Rn.H = hi' pairs report the composed 32-bit constant, the
-    same trick binutils' own disassembler uses.
-    """
 
     def __init__(self):
         self.rv = {}
@@ -187,9 +140,8 @@ class Dis:
         if name != BAD:
             self.rv[name] = val & 0xFFFFFFFF
 
-    # ------------------------------------------------------------------
     def decode(self, iw0, iw1, pc):
-        """-> (text, length, kind, target) or None."""
+
         self.comment = ''
         for fn in self._TABLE:
             r = fn(self, iw0, iw1, pc)
@@ -197,7 +149,6 @@ class Dis:
                 return r
         return None
 
-    # ---------------------------------------------------------- 16-bit ops
     def _ProgCtrl(self, iw0, iw1, pc):
         if (iw0 & 0xFF00) != 0x0000:
             return None
@@ -237,7 +188,7 @@ class Dis:
             t = f'TESTSET ({pregs(poprnd)})'
         if t is None:
             return None
-        # a register-indirect call/jump whose pointer we tracked
+
         tgt = None
         if k in ('callr', 'jumpr'):
             tgt = self.rv.get(pregs(poprnd))
@@ -660,7 +611,6 @@ class Dis:
             return (f'[{P} + {o4}] = {pregs(reg)}', 2, None, None)
         return None
 
-    # ---------------------------------------------------------- 32-bit ops
     def _LoopSetup(self, iw0, iw1, pc):
         if not ((iw0 & 0xFF80) == 0xE080 and (iw1 & 0x0C00) == 0x0000):
             return None
@@ -777,12 +727,7 @@ class Dis:
         return ('UNLINK', 4, None, None)
 
     def _alu_text(self, iw0, iw1):
-        """Render the common dsp32alu forms (add/sub/MIN/MAX/ABS).
 
-        Field layout per binutils: aopcde/HL come from iw0, the rest from iw1.
-        aop bit1 selects src0's half, bit0 selects src1's half; HL selects the
-        destination half. amod1(s,x): (NS) when s=0,x=0 and (S) when s=1,x=0.
-        """
         aopcde = iw0 & 0x1F
         HL = (iw0 >> 5) & 1
         src1 = iw1 & 7
@@ -817,15 +762,14 @@ class Dis:
         return None
 
     def _dsp32(self, iw0, iw1, pc):
-        """Parallel-DSP groups. dsp32alu arithmetic is rendered; the rest are
-        recognised for length only."""
+
         for mask, val, name in ((0xF600, 0xC000, 'dsp32mac'),
                                 (0xF600, 0xC200, 'dsp32mult'),
                                 (0xF7C0, 0xC400, 'dsp32alu'),
                                 (0xF780, 0xC600, 'dsp32shift'),
                                 (0xF780, 0xC680, 'dsp32shiftimm')):
             if (iw0 & mask) == val:
-                # conservative: any Dreg may be clobbered
+
                 self.rv.clear()
                 if name == 'dsp32alu':
                     t = self._alu_text(iw0, iw1)
@@ -840,27 +784,16 @@ class Dis:
               _dagMODik, _dspLDST, _LDST, _LDSTiiFP, _LDSTii, _LoopSetup,
               _LDIMMhalf, _CALLa, _LDSTidxI, _linkage, _dsp32)
 
-
 def insn_length(iw0):
-    """Encoded length in bytes, from iw0 alone -- independent of whether the
-    instruction is one we can render. A 32-bit instruction carrying
-    BIT_MULTI_INS (0x0800) is a 64-bit multi-issue group: the 32-bit op plus
-    two 16-bit slots issued in parallel. Getting this right on instructions we
-    cannot decode is what keeps a linear sweep in sync."""
+
     if (iw0 & 0xC000) != 0xC000 or (iw0 & 0xFF00) == 0xF800:
         return 2
     if (iw0 & 0x0800) and (iw0 & 0xE800) != 0xE800:
         return 8
     return 4
 
-
 def decode_at(img, pc, d):
-    """Decode the one instruction at `pc` with the stateful decoder `d`.
 
-    `img` needs only read(addr, n) -> bytes (may be short) or None.  Returns an
-    Insn (text 'ILLEGAL (...)' and kind None when undecodable), or None when
-    nothing is loaded at pc.  A 64-bit multi-issue group is one Insn of length 8.
-    """
     import struct
     b = img.read(pc, 8)
     if not b or len(b) < 2:
@@ -875,8 +808,7 @@ def decode_at(img, pc, d):
         return Insn(pc, n, f'ILLEGAL (0x{iw0:04x})', iw0=iw0, iw1=iw1)
     text, ln, kind, tgt = r
     cmt = d.comment
-    # 64-bit multi-issue: a 32-bit DSP insn with BIT_MULTI_INS (0x0800)
-    # set is followed by two 16-bit instructions issued in parallel.
+
     if (ln == 4 and (iw0 & 0xC000) == 0xC000 and (iw0 & 0x0800)
             and (iw0 & 0xE800) != 0xE800):
         b8 = img.read(pc, 8)
@@ -892,16 +824,15 @@ def decode_at(img, pc, d):
             ln = 8
     return Insn(pc, ln, text, kind, tgt, iw0, iw1, cmt)
 
-
 def disasm(img, start, end, dis=None):
-    """Linearly disassemble [start, end) from an ldr.Image. Yields Insn."""
+
     d = dis or Dis()
     d.reset()
     pc = start
     while pc < end:
         ins = decode_at(img, pc, d)
         if ins is None:
-            # hole in the image (FILL/BSS): resume at the next loaded segment
+
             nxt = [a for a, o, n in img.segs if a > pc]
             if not nxt:
                 return

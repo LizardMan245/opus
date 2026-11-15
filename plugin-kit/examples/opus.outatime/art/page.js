@@ -1,17 +1,17 @@
-/* page.js: outatime's T1 art, from the time-machine design reference v3 (outatime3.js), its instruments taken over
-   by meaning (2026-10-26): the time circuits are year's (blue: DEST the destination, the PRES row the first
+/* page.js: outatime's T1 art, from the time-machine design, its instruments taken over
+   by meaning: the time circuits are year's (blue: DEST the destination, the PRES row the first
    arm drifting with speed, LAST the year before), the speedometer, road and wheels speed's (green), the flux
    capacitor power's (white: the rods are the three arms, the readout gigawatts), the fire trail's (orange: each note
    lights it, it burns down as the ignition does). This file draws what never moves; ota_page.c draws the rest with
    the places written next to the art (build.js). op1draw.js, opfont.json and car.json (the time-machine car)
-   are copies of the design reference's own of 2026-10-23.
+   come from the design.
 */
 'use strict';
 const D = require('./op1draw.js');
 const CAR = require('./car.json');
 const { C, line, path, fillPath, dot, ring, group, roundRect, textWidth, text, svgDoc } = D;
 
-// the OP-1's palette (stock colors.svg) and v3's roles; colours the user's picks change are placeholders the page
+// the OP-1's palette (colors.svg) and the design's roles; colours the user's picks change are placeholders the page
 // sets (opus_art_colour_slots): the fourth encoder's (the car's accents, the 88 tick), the second's dim (PRES's line),
 // the first's (the time cables' steady glow, so the
 // cables take the theme's colours)
@@ -24,7 +24,7 @@ const hex = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
 const mix = (a, b, t) => '#' + hex(a).map((v, i) => Math.round(v + (hex(b)[i] - v) * t).toString(16).padStart(2, '0')).join('').toUpperCase();
 const rad = d => (d * Math.PI) / 180;
 
-function arcSegs(cx, cy, r, a0, a1) {          // degrees, 0 = right, 90 = up; cubics of <= 90 degrees (v3's)
+function arcSegs(cx, cy, r, a0, a1) {          // degrees, 0 = right, 90 = up; cubics of <= 90 degrees (the design's)
   const segs = [], k = Math.max(1, Math.ceil(Math.abs(a1 - a0) / 90)), da = (a1 - a0) / k;
   const P = a => [cx + r * Math.cos(rad(a)), cy - r * Math.sin(rad(a))];
   const T = a => [-Math.sin(rad(a)), -Math.cos(rad(a))];
@@ -52,7 +52,8 @@ function samplePath(segs, steps = 8) {        // a path's points, each cubic in 
   }
   return pts;
 }
-// v3's trefoil, each shape filled and stroked a pixel wide in its colour (strokes are widths in the panel's pixels):
+// the trefoil, each shape filled and stroked a pixel wide in its colour
+// (strokes are widths in the panel's pixels):
 // the OS's fill comes up half a pixel short at the bottom and right, and at about 15 pixels across the
 // blades lost their inner corners and lower edges, so the sign looked twisted, not like
 // the reference's; the stroke gives the edges back
@@ -69,14 +70,14 @@ function trefoil(cx, cy, r, col) {
   return out;
 }
 
-// ------------------------------------------------------------------ the car (v3's drawing), v3's place
+// ------------------------------------------------------------------ the car (the design's drawing), the design's place
 const S = 1.18, CX = x => (x - 19.4) * S + 8, CY = y => (y - 66.3) * S + 66, GROUND = 66.6;
 const carParts = CAR.parts.map(p => {
   if (p.circle) return { c: p.c, circle: [CX(p.circle[0]), CY(p.circle[1]), p.circle[2] * S] };
   return { c: p.c, segs: p.segs.map(s => (s[0] === 'z' ? ['z'] : [s[0], ...s.slice(1).map((v, i) => (i % 2 ? CY(v) : CX(v)))])) };
 });
 const wheels = CAR.wheels.map(w => ({ cx: CX(w.cx), cy: CY(w.cy), spokes: w.spokes.map(([a, r1, r2]) => [a, r1 * S, r2 * S]) }));
-// the time cables, the current along each (v3 ran it along the longest alone, though the car has three):
+// the time cables, the current along each (the design ran it along the longest alone, though the car has three):
 // the drawing's blue parts in each cable's order, front to back (the sill; over the rear wheel and down the
 // back; the tubes on top), a gap between two parts the cable behind the body. Part 55, a short mark, is no cable.
 const CABLE_PARTS = [[56], [59, 60, 61, 62, 63], [57, 58]];
@@ -87,16 +88,16 @@ const cables = CABLE_PARTS.map(parts => parts.flatMap(i => {
 const EMIT_X = wheels[1].cx + 6;
 
 // ------------------------------------------------------------------ the instruments
-// v3's three, the time circuits wider and its text bigger for reading:
+// the design's three, the time circuits wider and its text bigger for reading:
 // the speedometer's and the flux capacitor's panels
-// narrower (the capacitor drawn at 0.9 of v3's), the rows' characters 13 tall (v3 11), the names 6 (v3 4.2), the
-// tabs' 7 (v3 5).
+// narrower (the capacitor drawn at 0.9 of the design's), the rows' characters 13 tall (the design 11), the names 6
+// (the design 4.2), the tabs' 7 (the design 5).
 const PD = [2.5, 77, 70, 145], PS = [74, 77, 251, 145], PF = [255, 77, 317.5, 145];
 const GA = { cx: 36.25, cy: 106, r: 17, a0: 210, a1: -30 };
 const LABEL = 6;                                 // the row names' and MPH's cap height
 const TC = { rows: [85, 104, 123], h: 13, w14: 6.4, w7: 5.8, pitch: 8.6, sw: 1.4, gap: 6, label: PS[0] + 4 };
 TC.x0 = TC.label + Math.max(...['DEST', 'PRES', 'LAST'].map(w => textWidth(w, LABEL))) + 5;
-const FK = 0.9, FM = (x, y) => [286.25 + (x - 281) * FK, 112.75 + (y - 112.75) * FK];   // v3's capacitor, scaled
+const FK = 0.9, FM = (x, y) => [286.25 + (x - 281) * FK, 112.75 + (y - 112.75) * FK];   // the capacitor, scaled
 const FXB = [...FM(251, 83), ...FM(311, 122)];
 const FX = { j: FM(281, 104.5), el: [FM(262.5, 92.6), FM(299.5, 92.6), FM(281, 116)] };
 const MPH = { x: 18, pitch: 10.5, y: 119.5, w: 7.6, h: 13 };
@@ -144,9 +145,9 @@ function staticArt() {
   // the flux capacitor: box, window (gaps at the corners), warning strip, electrodes, wires; the readout's box and
   // the fuel button
   stat.push(path(roundRect(...FXB, 6 * FK), K.purplegrey, 1.2));
-  const L = (x0, y0, x1, y1, col, w, cap) => line(...FM(x0, y0), ...FM(x1, y1), col, w, cap);   // v3's places, scaled
+  const L = (x0, y0, x1, y1, col, w, cap) => line(...FM(x0, y0), ...FM(x1, y1), col, w, cap);   // the places, scaled
   const P = segs => segs.map(sg => [sg[0], ...sg.slice(1).flatMap((v, i, a) => (i % 2 ? [] : FM(v, a[i + 1])))]);
-  const w0 = 255.5, w1 = 306.5, v0 = 90, v1 = 117.5;                                 // v3's window
+  const w0 = 255.5, w1 = 306.5, v0 = 90, v1 = 117.5;                                 // the design's window
   stat.push(L(w0 + 5, v0, w1 - 5, v0, K.dkblue, 1), L(w0 + 5, v1, w1 - 5, v1, K.dkblue, 1), L(w0, v0 + 5, w0, v1 - 5, K.dkblue, 1), L(w1, v0 + 5, w1, v1 - 5, K.dkblue, 1));
   stat.push(L(257, 86.6, 278, 86.6, K.pink, 1.4, 'round'), L(281, 86.6, 283.5, 86.6, K.pink, 1.4, 'round'));
   for (const [ex, ey] of FX.el) stat.push(ring(ex, ey, 3.8 * FK, K.purplegrey, 1.1), dot(ex, ey, 1.6 * FK, K.pink));
@@ -174,7 +175,7 @@ const U = v => Math.round(v * 256);            // units x 256, the page service'
 const Q = v => Math.round(v * 4096);           // Q12
 function cHeader(svg) {
   const out = [];
-  out.push('/* outatime\'s T1 art and its places: made by art/build.js from art/page.js (the time-machine design v3, its');
+  out.push('/* outatime\'s T1 art and its places: made by art/build.js from art/page.js (the time-machine design, its');
   out.push(' * instruments by meaning). Do not edit by hand. Places in the drawing\'s units (320 x 160) x 256. */');
   out.push('#ifndef OTA_ART_H', '#define OTA_ART_H', '');
   out.push('static const char ota_art[] =');

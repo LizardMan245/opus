@@ -92,10 +92,11 @@ python plugin_tool.py show build/hello.opmod
 
 1. **Developer mode** (once): open Opus's menu (hold **synth + drum + tape + mixer** together), **T1** for the
    system settings, and switch **developer mode** on. While it is on, a plugin that crashes is not left out at the
-   next start and one that uses too much CPU is not switched off, so you see what yours really does. Switch it off
-   when you are done.
+   next start and one that uses too much CPU is not switched off, so you see what yours really does; and the OP-1
+   restarts by itself after a disk mode that changed the mods folder (core 2.53). Switch it off when you are done.
 2. **Disk mode:** press **shift + COM**, then **T3**, and connect the OP-1. Copy `build/hello.opmod` into the disk's
-   **mods** folder, eject the disk, and switch the OP-1 off and on.
+   **mods** folder and eject the disk. In developer mode the OP-1 then says "new plugins: restarting" and restarts
+   with your plugin; otherwise switch it off and on.
 3. **The mods list:** the menu again, then **T2**. Turn **blue** to your plugin's row: it says "loaded", or why not
    ("needs opus_something": it calls a name this core does not have; "not loaded: no room": out of memory). Push
    **blue** for its settings, **green** for its controls, **orange** for its details (its memory, its worst audio
