@@ -124,7 +124,8 @@ thread on op-forums. Where ideas came from: [CREDITS.md](CREDITS.md).
 
 What's in this repository (the docs and the plugin kit) is [GPL-3.0](LICENSE): use it, change it and share it,
 and what you build on it stays open too. The plugin kit adds two terms under the GPL's section 7: a modified version
-has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, free to use and share. Their
+has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, free to use and share. Other plugin sites and firmware need
+LizardMan's OK to host or bundle them; the kit's five examples are GPL-3.0 and free for anyone to host. Their
 source is not published yet, apart from the kit's five examples. The source of the core and the other plugins will
 be published once it's properly put together. There's no date yet, but it isn't meant to stay closed. dx contains
 code under the Apache License 2.0 (its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all
