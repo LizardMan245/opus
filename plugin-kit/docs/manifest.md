@@ -241,6 +241,22 @@ sound's own one at a time, so two engines may both take shift + blue turn on `sy
 `adds engine|effect|lfo NAME` line; core 2.22 on). The mods list shows each plugin's controls
 (the green push on its row). The declaration does not route anything: the plugin's key and knob handlers see every
 event and must check the same conditions themselves.
+From core 2.67 a line may also name `list` where it names a mode: the OP-1's lists and browsers (the engine, effect,
+LFO and sound lists, the preset browser), which are none of the four modes.
+
+From core 2.67 the declaration routes: a plugin whose `core` line is 2.67 or later gets in its key and knob handlers
+only the events its `uses` lines match, and each release whose press it got (api.md, "Keys and encoders"); a `modal`
+line while its quick page shows or while it says its surface is up (`opus_modal`).
+
+The OP-1's own controls count too (core 2.67): where the OP-1 itself does something with a key or an encoder's turn
+(left on the synth moves the octave, play plays the tape, white's turn on the tape sets its speed), a line taking it
+must say so with the word `over`, and the controls page shows under the control what it replaces ("octave down",
+"replaces the op-1 control"). Without `over` a plugin built for 2.67 is refused ("left: the op-1 octave down");
+one built for an older core only shows "takes the op-1 control" on its controls page. Take an OP-1 control only to
+replace what it does on purpose; the free keys per screen (the encoders' pushes on most screens, split off the tape,
+shift + T2, lift, drop, split and stop on the synth and the drum) and the turns a screen does nothing with need no
+word. [controls.md](controls.md) has every screen: what the OP-1 uses there, plain and with shift, what is free, whose
+each combination is, and what Opus's own plugins take.
 
 `INPUT`, the first word, is one of:
 

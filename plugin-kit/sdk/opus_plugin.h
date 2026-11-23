@@ -62,6 +62,48 @@ void opus_on_frame_under(struct opl_self *self, void (*fn)(unsigned short *buf))
  * thread; the opus_page_* names as in a frame handler. For an overlay that belongs above all, not for a plugin's
  * ordinary drawing. */
 void opus_on_frame_top(struct opl_self *self, void (*fn)(unsigned short *buf));
+/* (core 2.66) The layers a plugin draws on, bottom to top (the screen's whole order: the core's layer list). UNDER:
+ * under every OS screen (opus_on_frame_under's); MARKS: a small mark on a page (a chord's name, an icon), over the
+ * OS's page and under its own popups (the octave popup, SAVING, help); POPUP: a popup over the OS's frame
+ * (opus_on_frame's); OVERLAY: over everything the frame has (opus_on_frame_top's: FN held alone). fn as a frame
+ * handler's, the display thread, the opus_page_* names. -> 1, or 0 for a layer a plugin cannot draw on. */
+enum { OPUS_LAYER_UNDER = 2, OPUS_LAYER_MARKS = 4, OPUS_LAYER_POPUP = 6, OPUS_LAYER_OVERLAY = 8 };
+int opus_on_draw(struct opl_self *self, int layer, void (*fn)(unsigned short *buf));
+/* (core 2.66) A toast in the core's queue: text (copied, at most 31 characters) in Opus's box, as opus_page_toast
+ * draws it (x, y, size, colour, frame and centre the same), on the toast layer: over every plugin's popup, under the
+ * FN-held overlay. One shows at a time, for ms (0: 1.5 s; 0.3-10 s), one that waited over 3 s dropped rather than shown
+ * late; a plugin's new toast replaces its own at once
+ * (its time starting again), another plugin's waits its turn. Any thread but the audio's. -> 1, or 0 when eight wait
+ * already. opus_toast_cancel takes the plugin's own away, showing or waiting. */
+int opus_toast(struct opl_self *self, int x, int y, int size, int colour, int frame, const char *text, int centre,
+               unsigned ms);
+void opus_toast_cancel(struct opl_self *self);
+/* (core 2.67) A plugin built for this core (its manifest's `core 2.67` or later) gets a key or a turn in its key and
+ * knob handlers only when one of its `uses` lines matches it now, and a release whenever it got the press; its `modal`
+ * lines match while its quick page shows or while it said its own surface is up: opus_modal(self, 1) when it shows
+ * (a popup's rows, a column in a list), opus_modal(self, 0) when it goes; it ends by itself when the OS's screen
+ * changes (the surface was on that screen). A plugin built for an older core sees every event, as before. KeyHandler
+ * thread or any. */
+void opus_modal(struct opl_self *self, int on);
+/* (core 2.67) The pointer (a mouse) on what the plugin draws: fn(x, y, buttons, wheel), the arrow's place in page units,
+ * the buttons (bit 0 left, bit 1 right, bit 2 middle) and the wheel's notches, for every report while the arrow is over
+ * something the plugin drew in the last frame with the opus_page_* calls (on any layer, the topmost plugin first), or
+ * while its modal surface is up; 1 takes it (the OP-1's encoders do not turn), 0 lets it go on to what lies under it. A
+ * press it took keeps the reports coming to fn, wherever the arrow goes, until the button is let go. KeyHandler
+ * thread. */
+void opus_on_pointer(struct opl_self *self, int (*fn)(int x, int y, int buttons, int wheel));
+/* (core 2.68) The pointer on the plugin's own page: while its effect's, engine's, LFO type's or sequencer's page shows
+ * (opus_page_now says which), opus_on_pointer's fn is asked for every report anywhere on the page, after any surface
+ * over it. And fn may answer OPUS_POINTER_ENCODER(n) (0 blue .. 3 orange) instead of 1 or 0: the arrow stands on its
+ * control for that encoder. The core then does there what it does on the OP-1's own screens: the arrow takes that
+ * encoder's colour, the wheel and a drag up or down turn it, a click is its push, and the page gets them as the OP-1's
+ * own turns and pushes (its page_turn and page_key). 0 on its own page leaves the place to the screen's quarters, blue
+ * to orange from the left. While the button is held after a press that went to an encoder (a drag turning it), fn is
+ * not asked: its next report comes after the button is let go. OPUS_POINTER_TAKEN(n) takes the report as 1 does and
+ * shows the arrow in encoder n's colour: a control the plugin changes itself (from the wheel, its own drag) that
+ * belongs to that encoder. */
+#define OPUS_POINTER_ENCODER(n) (2 + (n))
+#define OPUS_POINTER_TAKEN(n)   (6 + (n))
 void opus_on_main_pass(struct opl_self *self, void (*fn)(void));
 /* After the OS's own handling (2026-10-21): every key and turn the key and knob handlers saw, taken or not (a
  * taken one the OS never saw), with the delta the OS had (the KeyHandler thread); the clip queue's run once per
@@ -138,6 +180,12 @@ int opus_flash_headroom(void);
 #define OPUS_ACCENT_SET 0x01000000u
 unsigned opus_accent(int i);
 void opus_on_block(struct opl_self *self, void (*fn)(void));
+/* Core 2.59: a block handler with nothing to do sleeps (each call costs about 900 cycles even when it returns at
+ * once). From inside the plugin's own block handler: its block handlers are not called for `blocks` blocks, or with
+ * 0 until opus_block_wake (any thread: a key, a knob, a setting, a timer). A wake while the handler still runs
+ * cancels the sleep it asks, so change the state first, then wake. Elsewhere opus_block_sleep does nothing. */
+void opus_block_sleep(struct opl_self *self, unsigned blocks);
+void opus_block_wake(struct opl_self *self);
 void opus_on_pre_fx(struct opl_self *self, void (*fn)(int instrument, short *buf));
 void opus_on_post_fx(struct opl_self *self, void (*fn)(int instrument, short *buf));
 void opus_on_post_master(struct opl_self *self, void (*fn)(short *l, short *r));
@@ -515,6 +563,13 @@ int opus_kit_overwrite(struct opl_self *self, int index, int slot);
 int opus_kit_rename(struct opl_self *self, int index, const char *to, int slot);
 int opus_kit_delete(struct opl_self *self, int index);
 void opus_presets_reload(int kind);
+/* (core 2.62) The six calls above on the USB drive's presets too: a rename, an overwrite or a delete of a drive
+ * preset is the drive's file written again whole (the OS's writer, read back, then the whole file to the drive as
+ * NAME.tmp and the names changed; no journal reaches the drive), its name in the file too. opus_preset_where
+ * says what kind's (0 synth, 1 drum) array entry at index is, for such a change: 1 one of the OP-1's preset files, 2 a
+ * preset on the drive, which takes writes now, 0 one of the OS's own rows (op1.db's, a factory preset), -1 none of
+ * these: nothing may be changed (another source's entry, a drive that takes no writes). */
+int opus_preset_where(int kind, int index);
 
 /* Managers (core 2.2, 2026-10-25; the module model): any plugin may run
  * instances of any effect type (the OS's eight and every plugin's) wherever it wants, without the type knowing (Fx
@@ -751,11 +806,15 @@ int opus_engine_knob_set(int k, int value);
  * voices' states may move between fast memory and SDRAM between blocks (fast memory on lease, by priority). */
 #define OPUS_ENGINE_STATE_MOVES 512
 int opus_engine_data(void *buf, int max);
+/* Core 2.59: a number that moves whenever opus_engine_data would read other bytes (the data written, or another
+ * slot current): one compare tells whether to read it again. */
+unsigned opus_engine_data_seq(void);
 int opus_engine_data_set(const void *buf, int n);
 int opus_engine_sound_name(char *buf, int max);
 
-/* A plugin's own page (an engine's T1, T2 and T4): the whole 320 x 160 drawing, cut to it (the OP-1's window shows y
- * 2-146). Only inside the page's draw call; colours by id. Text slots 0-31, each with one place and size (its first). */
+/* A plugin's own page (an engine's T1, T2 and T4): the 320 x 160 drawing, the OP-1's window showing its y 2-146 (fills,
+ * frames and bars are cut to that; keep text and lines in it). Only inside the page's draw call; colours by id. Text
+ * slots 0-31, each with one place and size (its first). */
 void opus_page_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
 void opus_page_text_right(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
 void opus_page_text_centre(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);   /* core 2.21: centred on x */
@@ -770,6 +829,11 @@ int opus_text_width(int size, const char *text);
  * drawing. Uses text slot `slot` (its place: x + 8 or x, y + 6, and size stay the same each call). Inside a page's
  * draw or a frame handler; -> the box's right edge, -1 elsewhere. */
 int opus_page_toast(struct opl_self *self, int slot, int x, int y, int size, int colour, int frame, const char *text, int centre);
+/* A brief popup (core 2.51): the core's notice box at the screen's top left over whatever shows, title (at most 15
+ * characters, lower case) in colour (an OPUS_COLOR_* id: the palette's or an encoder's), line below it ("FILE: WHY" as
+ * two rows, the reason first); it goes by itself after ms (0: 3 s; 0.5-10 s) or at the next key or turn, queued behind
+ * a popup already showing. Both texts are copied. Any thread but the display's. */
+void opus_notice(const char *title, const char *line, unsigned ms, int colour);
 void opus_page_fill(int x0, int y0, int x1, int y1, int colour);         /* a filled rectangle, inclusive */
 void opus_page_frame(int x0, int y0, int x1, int y1, int colour);        /* its outline, one pixel */
 void opus_page_line(int x0, int y0, int x1, int y1, int colour);         /* a unit wide, smoothed (2026-10-23) */
@@ -999,6 +1063,41 @@ struct opus_sequencer {
 int opus_seq_register(struct opl_self *self, const struct opus_sequencer *s);
 int opus_seq_mode(void);                   /* the instrument the OS's sequencer calls are for now: 0 synth, 1 drum */
 
+/* A USB flash drive's files (core 2.40), read in OP_Main's thread (a main pass; a long copy a piece a pass). Paths
+ * from the drive's top, "/samples/kick.aif"; names as the drive keeps them (long names, code page 437). The drive may
+ * be pulled at any moment: -1 says gone. At most four files and two listings open at once, for all. */
+#define OPUS_DRIVE_NAME 64
+struct opus_drive_entry {
+    char name[OPUS_DRIVE_NAME];            /* cut at 63 characters */
+    unsigned size;                         /* bytes (a file's) */
+    unsigned char folder, hidden;
+};
+int opus_drive_state(void);                /* 0 no drive, 1 ready, -1 a drive whose file system is not FAT */
+int opus_drive_info(char *label, int n, unsigned *megabytes);   /* its name (the volume label, or the device's) and size */
+int opus_drive_dir(const char *path);      /* a folder's listing: -> a handle, or -1 */
+int opus_drive_next(int dir, struct opus_drive_entry *e);   /* 1 the next entry, 0 the end, -1 gone */
+void opus_drive_dir_close(int dir);
+int opus_drive_open(const char *path, unsigned *size);      /* a file: -> a handle, or -1 */
+int opus_drive_read(int file, void *buf, unsigned n);       /* -> the bytes read (0 at its end), -1 gone */
+int opus_drive_seek(int file, unsigned pos);                /* 0, or -1 */
+void opus_drive_close(int file);
+/* Writing (core 2.44), in OP_Main's thread: 1 when the drive takes writes (its driver writes, not protected). A file
+ * made (or emptied: one there already is written over) -> a handle, or -1; its bytes -> as many written (fewer: the
+ * drive is full), -1 gone or failed; opus_drive_done closes any file as opus_drive_close and says whether its data
+ * reached the drive (0, or -1): a written file is whole on the drive only after it. A folder made (0, also when it is
+ * there), a file removed, a file or folder renamed within the drive (0, or -1); opus_drive_exists: 1 a file or folder
+ * there. */
+int opus_drive_writable(void);
+int opus_drive_create(const char *path);
+int opus_drive_write(int file, const void *buf, unsigned n);
+int opus_drive_done(int file);
+int opus_drive_mkdir(const char *path);
+int opus_drive_remove(const char *path);
+int opus_drive_rename(const char *from, const char *to);
+int opus_drive_exists(const char *path);
+/* The drive's free space in KB (core 2.48), OP_Main: 0, or -1 (no drive). The first call after a mount may read the
+ * drive's whole FAT (a drive without a valid FAT32 free count): a fraction of a second on a large drive. */
+int opus_drive_free(unsigned *kb);
 
 
 #endif

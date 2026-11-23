@@ -146,8 +146,19 @@ Most of the API is in core 2.0. These came later; set `core` to the highest vers
 | 2.35 | `opus_on_frame_top`, `opus_text_width`, `opus_page_toast` |
 | 2.36 | a `setting` line's ` if OTHER=VALUE`: the row shown only while another setting has that value (manifest.md) |
 | 2.38 | the manifest's `recolour` lines: a palette theme, any stock colour to its own (manifest.md) |
-| 2.57 | `opus_drum_select_key`: the drum's current key set without playing it (2.37 and 2.39-2.56 hold later releases' calls, not public yet) |
+| 2.40 | a USB flash drive's files read: `opus_drive_state`, `opus_drive_info`, `opus_drive_dir`, `opus_drive_next`, `opus_drive_open`, `opus_drive_read`, `opus_drive_seek` ([The flash drive](#the-flash-drive)) |
+| 2.44 | the drive written: `opus_drive_writable`, `opus_drive_create`, `opus_drive_write`, `opus_drive_done`, `opus_drive_mkdir`, `opus_drive_remove`, `opus_drive_rename`, `opus_drive_exists` |
+| 2.48 | `opus_drive_free` |
+| 2.51 | `opus_notice`: a brief popup in the core's notice box |
+| 2.57 | `opus_drum_select_key`: the drum's current key set without playing it |
 | 2.58 | `opus_on_line_input`: the line input's two sides before the OS sums them, read and changed |
+| 2.59 | `opus_block_sleep`, `opus_block_wake`: a block handler with nothing to do sleeps, and is not called until woken; `opus_engine_data_seq` |
+| 2.62 | the preset file calls on the USB drive's presets too; `opus_preset_where` |
+| 2.66 | the layers: `opus_on_draw`, a plugin's drawing on a named layer; `OPUS_LAYER_MARKS` under the OS's popups; two on one layer by priority, then id; the toast queue, `opus_toast`, `opus_toast_cancel` |
+| 2.67 | a plugin built for 2.67 gets the keys and turns its `uses` lines match (and their releases); the `uses` words `list` and `over` ([controls.md](controls.md)); `opus_modal`; `opus_on_pointer`: a mouse's arrow on what the plugin draws |
+| 2.68 | the arrow on a plugin's own page: `opus_on_pointer` asked there, `OPUS_POINTER_ENCODER`, `OPUS_POINTER_TAKEN` |
+
+A number missing from the table holds no public call: the core's own changes, or calls that are not public.
 
 Core 2.6's additions: `OPUS_ENGINE_OS_VOICES`; the engine fields `type`, `mark`, `svg`, `screen_init` and
 `screen_draw`; `struct opus_hosted_effect` and `opus_effect_host`.
@@ -176,7 +187,8 @@ types section); `opus_page_text_centre`.
 ## Contents
 
 - [The plugin's entry](#the-plugins-entry): `OPUS_PLUGIN_API`, `struct opl_self`, `opl_init`
-- [Events](#events): keys, encoders, FN, frames, the main pass, the clip queue, tape writes, saving, audio
+- [Events](#events): keys, encoders, FN, frames and layers, a mouse's arrow, the main pass, the clip queue, tape
+  writes, saving, audio
 - [Quick pages](#quick-pages): a plugin's own page in place of the screen
 - [Files](#files): rename, the background file job, the flash's headroom, reading files
 - [Journals](#journals): changes in several steps that survive a power cut
@@ -188,6 +200,7 @@ types section); `opus_page_text_centre`.
 - [Settings](#settings): the manifest's settings, a plugin's own rows on the settings page
 - [Switched places](#switched-places)
 - [Folders on the USB disk](#folders-on-the-usb-disk)
+- [The flash drive](#the-flash-drive): a USB flash drive's files, read and written
 - [The boot picture](#the-boot-picture)
 - [The panel](#the-panel): a plugin's panel on the mods list
 - [Colours](#colours): colours by id, the theme's accents
@@ -283,6 +296,22 @@ void opus_on_key(struct opl_self *self, int (*fn)(int key, int pressed));
 Your `fn` gets every key event in the key thread, before the OS: `key` is the key code (table above), `pressed` 1 for
 down and 0 for up. Return 1 to take the event: no later handler and not the OS sees it. Return 0 to pass it on. The
 FN key (the help key, code 0) comes here too, but never reaches the OS.
+
+**Built for core 2.67 or later** (the manifest's `core` line), the key and knob handlers get only the events one of
+the plugin's `uses` lines matches at that moment ([manifest.md](manifest.md): the input, shift and FN held or not, the
+`with` key, the mode's screen and its T page), and a release whenever they got its press, even if what held at the
+press holds no longer. A `modal` line matches while the plugin's quick page shows, or while it said its own surface is
+up:
+
+```c
+void opus_modal(struct opl_self *self, int on);
+```
+
+`on` 1 when its surface shows (rows it draws on a stock page, a column in a list, a naming popup), 0 when it goes.
+It also ends by itself when the OP-1's screen changes, so a surface left up by mistake cannot keep taking controls.
+So a plugin's handlers never see a key it did not declare, and a mistake in checking the conditions cannot take one.
+A plugin that must see every event watches with `opus_on_key_after` and `opus_on_knob_after`, which still get them
+all. Built for an older core, the handlers see every event, as before.
 
 ```c
 int opus_key_post(int key, int pressed);
@@ -407,6 +436,39 @@ name or a popup), not for a plugin's ordinary drawing. Display thread; the `opus
 handler.
 
 ```c
+enum { OPUS_LAYER_UNDER = 2, OPUS_LAYER_MARKS = 4, OPUS_LAYER_POPUP = 6, OPUS_LAYER_OVERLAY = 8 };
+int opus_on_draw(struct opl_self *self, int layer, void (*fn)(unsigned short *buf));
+```
+
+The layers (core 2.66): the screen is one stack, drawn from the bottom up, and a plugin names the layer its drawing
+goes on. From the bottom: an engine's or effect's own page; `OPUS_LAYER_UNDER` (what `opus_on_frame_under` draws);
+the OS's screen; `OPUS_LAYER_MARKS`, a small mark on a page (a chord's name, an icon), over the OS's screen but under
+the OS's own popups (the octave popup, SAVING, help cover it as they cover the screen); the OS's popups;
+`OPUS_LAYER_POPUP`, a popup over everything the OS drew (what `opus_on_frame` draws); `OPUS_LAYER_OVERLAY`, over all
+of the frame (what `opus_on_frame_top` draws: FN held alone). Then Opus's menu and quick pages, the core's notices and
+the pointer. Returns 1, or 0 for a layer a plugin cannot draw on. One plugin may draw on several layers, each with its
+own function. Display thread; the `opus_page_*` functions as in a frame handler. Two plugins on one layer are drawn
+by their manifest's `priority` (low first), then by id: the later is on top, whatever their files are called.
+
+```c
+int opus_toast(struct opl_self *self, int x, int y, int size, int colour, int frame, const char *text, int centre,
+               unsigned ms);
+void opus_toast_cancel(struct opl_self *self);
+```
+
+A toast in the core's queue (core 2.66): `text` (copied, at most 31 characters) in Opus's box as `opus_page_toast`
+draws it (`x`, `y`, `size`, `colour`, `frame` and `centre` the same), on the toast layer, over every plugin's popup and
+under the FN-held overlay. One toast shows at a time, for `ms` (0: 1.5 s; 0.3 to 10 s), and one that waited over 3 s
+is dropped rather than shown late; a plugin's new toast replaces
+its own at once, its time starting again (a chord's name that follows the chord), and another plugin's waits its turn.
+Any thread but the audio's; no frame handler needed. Returns 1, or 0 when eight wait already or when no line can
+be drawn there (`x` 0 to 319, `size` 6 to 48, the line inside the drawing). Keep to a few places: the queue holds a
+text for each of the first eight places and sizes it is asked for, and shows a toast at any further one at the
+nearest of those. Let a left-aligned toast fit right of its `x`: one that does not is moved left by its width, and
+each width there counts as a place.
+`opus_toast_cancel` takes the plugin's own toast away, showing or waiting.
+
+```c
 int opus_frames_late(void);
 ```
 
@@ -415,6 +477,53 @@ after the one before: the OS starts the next frame only when the last one is don
 longer than a period halves the frame rate at once. The audio comes first: under a heavy sound the drawing gets only
 what the audio leaves. An animated page may draw a lighter version while frames come late (leave a glow or a trail
 out) and go back once they come on time again. Any thread.
+
+### The pointer
+
+
+```c
+void opus_on_pointer(struct opl_self *self, int (*fn)(int x, int y, int buttons, int wheel));
+#define OPUS_POINTER_ENCODER(n) (2 + (n))
+#define OPUS_POINTER_TAKEN(n)   (6 + (n))
+```
+
+A mouse's arrow on what the plugin draws (core 2.67). With a USB mouse plugged in, Opus shows an arrow and turns what
+it points at into the OP-1's own input: the wheel or a drag up or down turns an encoder, a click is that encoder's
+push. On the OP-1's own screens the arrow knows where each control is; on a plugin's drawing it asks the plugin.
+
+While the arrow is over something the plugin drew in the last frame with the `opus_page_*` calls (on any layer: the
+topmost plugin first, overlay before popup before mark), or while its modal surface is up (`opus_modal`), each report
+goes to `fn`: the arrow's place in page units, the buttons (bit 0 left, bit 1 right, bit 2 middle) and the wheel's
+notches. Return 1 to take it (the OP-1's encoders do not turn), 0 to let it go on to what lies under it. A press it
+took keeps the reports coming to `fn`, wherever the arrow goes, until the button is let go. Drawing made by writing
+pixels directly takes no pointer. KeyHandler thread.
+
+On the plugin's own page (core 2.68): while its effect's, engine's, LFO type's or sequencer's page shows
+(`opus_page_now` says which), `fn` is asked for every report anywhere on the page, after any surface over it. Without
+an answer the page's four quarters stand for the four encoders, blue to orange from the left. A page whose controls
+lie elsewhere says so:
+
+- `OPUS_POINTER_ENCODER(n)` (0 blue, 1 green, 2 white, 3 orange): the arrow stands on the page's control for that
+  encoder. The core does the rest as on the OP-1's own screens: the arrow takes that encoder's colour, the wheel and
+  a drag turn it, a click is its push, and the page gets them as the OP-1's own turns and pushes (`page_turn`,
+  `page_key`). This is all most pages need: say where each of the four controls is.
+- 1: the plugin acts on the report itself (a row selected by a click, a button of its own).
+- `OPUS_POINTER_TAKEN(n)`: as 1, with the arrow in encoder n's colour: a control the plugin changes itself that
+  belongs to that encoder (a value on the page's shift layer, which no plain turn reaches).
+- 0: nothing of the plugin's there; the quarters.
+
+While the button is held after a press that went to an encoder (a drag turning it), `fn` is not asked: its next
+report comes after the button is let go.
+
+```c
+static int pointer(int x, int y, int buttons, int wheel)
+{
+    (void)buttons; (void)wheel;
+    if (x >= 160 && y >= 100)              /* the page's four values, drawn in a row in its right half */
+        return OPUS_POINTER_ENCODER((x - 160) / 40);
+    return 0;
+}
+```
 
 ### The main pass, the clip queue and tape writes
 
@@ -466,6 +575,19 @@ Once per audio block, in the sequencer thread (not in the audio interrupt), befo
 and charged to the plugin as thread time, not counted in its audio budget; stopped with the plugin's audio when it is
 switched off. The place for work that must keep pace with the audio but may take a little longer, such as preparing
 an effect instance (see `opus_fx_new`).
+
+```c
+void opus_block_sleep(struct opl_self *self, unsigned blocks);
+void opus_block_wake(struct opl_self *self);
+```
+
+Core 2.59. A block handler costs its call every block (about 900 cycles even when it returns at once: 0.15 % of the
+CPU), so one that only waits should sleep. Called from inside the plugin's own block handler, `opus_block_sleep` stops
+the core calling the plugin's block handlers: for `blocks` audio blocks, or with 0 until `opus_block_wake`. Call
+`opus_block_wake` from anywhere (a key or knob handler, a setting, a timer, the audio) when there is work again; the
+next block calls the handler. A wake that comes while the handler is still running cancels the sleep it asks for, so
+an event is never missed: change your state first, then wake. Called anywhere else, `opus_block_sleep` does nothing.
+Only `opus_on_block` handlers sleep; the audio events (below) are not affected.
 
 ```c
 void opus_on_pre_fx(struct opl_self *self, void (*fn)(int instrument, short *buf));
@@ -548,6 +670,7 @@ int opus_quick_page(struct opl_self *self);
 ```
 
 The page showing, or -1 when none of this plugin's shows. Any thread.
+
 
 ## Files
 
@@ -727,6 +850,16 @@ loading uses the same files.
 - `opus_presets_reload(kind)`: the presets read again as after a save, `kind` 0 the synth's, 1 the drum kits', with
   every source's entries (the OS's own loader alone would drop them). For a plugin that changed them. The browser
   never rebuilds a list while it shows: reload once it has closed.
+
+```c
+int opus_preset_where(int kind, int index);
+```
+
+Core 2.62: the overwrite, rename and delete calls work on the USB flash drive's presets too. The file is written
+again whole (the patch's `"name"` too) and swapped in on the drive; the drive takes no journal. `opus_preset_where`
+says what `kind`'s (0 synth, 1 drum) entry at `index` is: 1 one of the OP-1's preset files, 2 a preset on the drive,
+which takes writes now, 0 a row in the OS's database (or a factory preset), -1 nothing may be changed (another
+source's entry, a drive that takes no writes).
 
 ```c
 /* in a main-pass handler, once the user has chosen the new name: */
@@ -1283,6 +1416,79 @@ if (opus_on_folder(self, &banks))
     opus_folder_adopt(self, &banks, ".syx");
 ```
 
+
+## The flash drive
+
+A USB flash drive plugged into the OP-1 (with an adapter that makes the OP-1 the host) is the user's drive: Opus lists
+its presets in the browser and saves to it, and a plugin may read and write its files. One USB device at a time: while
+a drive is in, the OP-1 is not connected to a computer, and it does not charge. The drive may be pulled at any
+moment; every call says so with -1, and nothing a plugin does may depend on a file staying open.
+
+All of these run in the main thread (a main-pass handler, `opl_init`): never from the audio, a key handler or a
+draw. Reading and writing take real time, so a long copy goes a piece a pass. Paths start at the drive's top
+(`"/samples/kick.aif"`), with the names as the drive keeps them (long names, code page 437). The drive must be FAT
+(FAT32, as most sticks come; exFAT and NTFS are not read: `opus_drive_state` says -1). At most four files and two
+folder listings are open at once, for Opus and all plugins together: close what you open.
+
+```c
+int opus_drive_state(void);
+int opus_drive_info(char *label, int n, unsigned *megabytes);
+int opus_drive_free(unsigned *kb);
+```
+
+`opus_drive_state`: 0 no drive, 1 a drive ready, -1 a drive whose file system is not FAT. `opus_drive_info` (core
+2.40): its name (the volume label, or the device's own name) into `label` (`n` bytes) and its size in megabytes.
+`opus_drive_free` (core 2.48): the free space in KB; 0, or -1 with no drive. Its first call after a drive comes in may
+read the drive's whole table, a fraction of a second on a large drive.
+
+```c
+#define OPUS_DRIVE_NAME 64
+struct opus_drive_entry {
+    char name[OPUS_DRIVE_NAME];            /* cut at 63 characters */
+    unsigned size;                         /* bytes (a file's) */
+    unsigned char folder, hidden;
+};
+int opus_drive_dir(const char *path);
+int opus_drive_next(int dir, struct opus_drive_entry *e);
+void opus_drive_dir_close(int dir);
+```
+
+A folder's listing (core 2.40): `opus_drive_dir` gives a handle, or -1 (no such folder, no drive, two listings open
+already); `opus_drive_next` fills `e` with the next entry and returns 1, 0 at the end, -1 when the drive is gone;
+`opus_drive_dir_close` ends it. The order is the drive's own.
+
+```c
+int opus_drive_open(const char *path, unsigned *size);
+int opus_drive_read(int file, void *buf, unsigned n);
+int opus_drive_seek(int file, unsigned pos);
+void opus_drive_close(int file);
+```
+
+A file read (core 2.40): `opus_drive_open` gives a handle and the file's size, or -1; `opus_drive_read` returns the
+bytes read (0 at the file's end), or -1 when the drive is gone; `opus_drive_seek` sets the place to read from (0, or
+-1).
+
+```c
+int opus_drive_writable(void);
+int opus_drive_create(const char *path);
+int opus_drive_write(int file, const void *buf, unsigned n);
+int opus_drive_done(int file);
+int opus_drive_mkdir(const char *path);
+int opus_drive_remove(const char *path);
+int opus_drive_rename(const char *from, const char *to);
+int opus_drive_exists(const char *path);
+```
+
+Writing (core 2.44). `opus_drive_writable`: 1 when the drive takes writes (not write protected). `opus_drive_create`
+makes a file, or empties one that is there, and gives a handle, or -1. `opus_drive_write` returns the bytes written
+(fewer than asked: the drive is full), or -1 (gone, or failed). **`opus_drive_done` closes the file and says whether
+its data reached the drive** (0, or -1): a written file is whole on the drive only after it returns 0, so write
+under another name and rename when the file must never be seen half written. `opus_drive_mkdir` makes a folder (0,
+also when it is there); `opus_drive_remove` removes a file; `opus_drive_rename` renames a file or a folder within the
+drive (each 0, or -1); `opus_drive_exists`: 1 when a file or folder is there.
+
+The user may pull the drive while a file is being written. Tell them when a write is under way and when it is done
+(`opus_notice`), and never leave the only copy of something half written.
 
 ## The boot picture
 
@@ -2056,6 +2262,7 @@ keeps it (the sound's row is written). Returns 1, or 0 when the current sound is
 ```c
 #define OPUS_ENGINE_DATA 256
 int opus_engine_data(void *buf, int max);
+unsigned opus_engine_data_seq(void);
 int opus_engine_data_set(const void *buf, int n);
 int opus_engine_sound_name(char *buf, int max);
 ```
@@ -2065,6 +2272,9 @@ sound, so it travels with it: the OS's save makes a user preset holding it, and 
 
 - `opus_engine_data(buf, max)`: a copy of the current slot's data, as its last load or `data_set` left it, at most
   `max` bytes. Returns its length (0: none). Any thread.
+- `opus_engine_data_seq()` (core 2.59): a number that changes whenever `opus_engine_data` would return other bytes
+  (the data written, or another slot current). Compare it with the last one you read before copying the data again:
+  a pass that only watches for a change costs one compare. Any thread.
 - `opus_engine_data_set(buf, n)`: replaces it with `n` bytes (0-256; 0 removes it). Returns 1, or 0 when the current
   sound is no engine's or `n` is out of range. Key thread (a turn or key handler).
 - `opus_engine_sound_name(buf, max)`: the sound's name as the OS keeps it (the engine's name when chosen, a user
@@ -2464,8 +2674,10 @@ fw_snprintf(text, sizeof text, "%u.%u bpm", t.mbpm / 1000, t.mbpm % 1000 / 100);
 
 A plugin's own page is the whole 320 x 160 drawing: an engine's T1, T2 and T4 pages, a quick page, or what a frame
 handler draws. The `opus_page_*` functions draw only inside such a draw call (an engine's page, a quick page's `draw`,
-an `opus_on_frame` or `opus_on_frame_under` handler); anywhere else they draw nothing. Places and sizes are in units,
-cut to the drawing; the OP-1's window shows y 2-146. Colours by id ([Colours](#colours)).
+an `opus_on_frame` or `opus_on_frame_under` handler); anywhere else they draw nothing. Places and sizes are in units.
+The OP-1's window shows y 2-146 of the drawing: a fill, a frame and a bar are cut to those rows (since beta 5;
+before, to the whole drawing), and text, lines and paths are yours to keep inside them. Colours by id
+([Colours](#colours)).
 
 ```c
 void opus_page_text(struct opl_self *self, int slot, int x, int y, int size, int colour, const char *text);
@@ -2498,6 +2710,17 @@ A popup that fits its text (core 2.35), Opus's own look: a black box framed in `
 `centre` 0: the box's left edge at `x`, growing to the right as the text grows; 1: the box and the text centred on `x`.
 Kept inside the drawing. It uses text slot `slot`; keep `x`, `y` and `size` the same on every call. Inside a page's
 draw or a frame handler; returns the box's right edge, or -1 elsewhere.
+
+```c
+void opus_notice(const char *title, const char *line, unsigned ms, int colour);
+```
+
+A brief popup in the core's own notice box (core 2.51), at the screen's top left over whatever shows: `title` (at
+most 15 characters, lower case) in `colour` (a colour id: the palette's or an encoder's), `line` below it (a text of
+the form "FILE: WHY" is shown as two rows, the reason first). It goes by itself after `ms` (0: 3 s; 0.5 to 10 s) or
+at the next key or turn, and waits behind a popup already showing. Both texts are copied. For something that
+happened once and the user should know (a file written, a file refused); for a value that follows the playing, a
+toast (`opus_toast`). Any thread but the display's.
 
 ```c
 void opus_page_fill(int x0, int y0, int x1, int y1, int colour);
@@ -2860,13 +3083,32 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_art_text` | [Art](#art) |
 | `opus_art_turn` | [Art](#art) |
 | `opus_bgfile_idle` | [Files](#files) |
+| `opus_block_sleep` | [Events](#audio-events) |
+| `opus_block_wake` | [Events](#audio-events) |
 | `opus_boot_picture` | [The boot picture](#the-boot-picture) |
 | `opus_called` | [Which one is called](#which-one-is-called) |
 | `opus_clock` | [The clock](#the-clock) |
 | `opus_cpu_charge` | [CPU and the log](#cpu-and-the-log) |
+| `opus_drive_close` | [The flash drive](#the-flash-drive) |
+| `opus_drive_create` | [The flash drive](#the-flash-drive) |
+| `opus_drive_dir` | [The flash drive](#the-flash-drive) |
+| `opus_drive_dir_close` | [The flash drive](#the-flash-drive) |
+| `opus_drive_done` | [The flash drive](#the-flash-drive) |
+| `opus_drive_exists` | [The flash drive](#the-flash-drive) |
+| `opus_drive_free` | [The flash drive](#the-flash-drive) |
+| `opus_drive_info` | [The flash drive](#the-flash-drive) |
+| `opus_drive_mkdir` | [The flash drive](#the-flash-drive) |
+| `opus_drive_next` | [The flash drive](#the-flash-drive) |
+| `opus_drive_open` | [The flash drive](#the-flash-drive) |
+| `opus_drive_read` | [The flash drive](#the-flash-drive) |
+| `opus_drive_remove` | [The flash drive](#the-flash-drive) |
+| `opus_drive_rename` | [The flash drive](#the-flash-drive) |
+| `opus_drive_seek` | [The flash drive](#the-flash-drive) |
+| `opus_drive_state` | [The flash drive](#the-flash-drive) |
+| `opus_drive_writable` | [The flash drive](#the-flash-drive) |
+| `opus_drive_write` | [The flash drive](#the-flash-drive) |
 | `opus_drum_key` | [Engines](#drum-engines) |
 | `opus_drum_select_key` | [Engines](#drum-engines) |
-| `opus_on_line_input` | [Audio events](#audio-events) |
 | `opus_drums` | [Presets](#presets) |
 | `opus_effect_host` | [Another firmware's effects](#another-firmwares-effects) |
 | `opus_effect_live` | [Effects](#effects) |
@@ -2874,6 +3116,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_effect_show` | [Hidden stock effect and engine](#hidden-stock-effect-and-engine) |
 | `opus_engine_add` | [Engines](#engines) |
 | `opus_engine_data` | [Engines](#engines) |
+| `opus_engine_data_seq` | [Engines](#engines) |
 | `opus_engine_data_set` | [Engines](#engines) |
 | `opus_engine_knob_set` | [Engines](#engines) |
 | `opus_engine_knobs` | [Engines](#engines) |
@@ -2906,6 +3149,8 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_journal` | [Journals](#journals) |
 | `opus_journal_done` | [Journals](#journals) |
 | `opus_journal_run` | [Journals](#journals) |
+| `opus_key_post` | [Events](#keys-and-encoders) |
+| `opus_key_timer` | [Events](#keys-and-encoders) |
 | `opus_kit_delete` | [Presets](#presets-as-files) |
 | `opus_kit_file` | [Presets](#presets-as-files) |
 | `opus_kit_overwrite` | [Presets](#presets-as-files) |
@@ -2915,24 +3160,27 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_lfo_page` | [LFO types](#lfo-types) |
 | `opus_lfo_register` | [LFO types](#lfo-types) |
 | `opus_log` | [CPU and the log](#cpu-and-the-log) |
+| `opus_modal` | [Events](#keys-and-encoders) |
+| `opus_notice` | [Pages](#pages) |
 | `opus_on_block` | [Events](#audio-events) |
 | `opus_on_block_end` | [Events](#audio-events) |
+| `opus_on_draw` | [Events](#frames) |
 | `opus_on_folder` | [Folders on the USB disk](#folders-on-the-usb-disk) |
 | `opus_on_frame` | [Events](#frames) |
 | `opus_on_frame_begin` | [Events](#frames) |
-| `opus_on_frame_under` | [Events](#frames) |
 | `opus_on_frame_top` | [Events](#frames) |
-| `opus_key_post` | [Events](#keys-and-encoders) |
+| `opus_on_frame_under` | [Events](#frames) |
 | `opus_on_key` | [Events](#keys-and-encoders) |
 | `opus_on_key_after` | [Events](#keys-and-encoders) |
 | `opus_on_key_filter` | [Events](#keys-and-encoders) |
-| `opus_key_timer` | [Events](#keys-and-encoders) |
 | `opus_on_key_filter_first` | [Events](#keys-and-encoders) |
 | `opus_on_knob` | [Events](#keys-and-encoders) |
 | `opus_on_knob_after` | [Events](#keys-and-encoders) |
+| `opus_on_line_input` | [Audio events](#audio-events) |
 | `opus_on_main_pass` | [Events](#the-main-pass-the-clip-queue-and-tape-writes) |
 | `opus_on_panel` | [The panel](#the-panel) |
 | `opus_on_panel_knob` | [The panel](#the-panel) |
+| `opus_on_pointer` | [Events](#the-pointer) |
 | `opus_on_post_fx` | [Events](#audio-events) |
 | `opus_on_post_master` | [Events](#audio-events) |
 | `opus_on_pre_fx` | [Events](#audio-events) |
@@ -2955,12 +3203,13 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_page_line` | [Pages](#pages) |
 | `opus_page_line_to` | [Paths](#paths) |
 | `opus_page_move` | [Paths](#paths) |
+| `opus_page_now` | [A module's own page](#a-modules-own-page) |
 | `opus_page_path` | [Paths](#paths) |
 | `opus_page_pixels` | [Pixels](#pixels) |
 | `opus_page_put` | [Pixels](#pixels) |
-| `opus_page_stroke` | [Paths](#paths) |
 | `opus_page_still` | [Pages](#pages) |
 | `opus_page_still_done` | [Pages](#pages) |
+| `opus_page_stroke` | [Paths](#paths) |
 | `opus_page_stroke_line` | [Pages](#pages) |
 | `opus_page_text` | [Pages](#pages) |
 | `opus_page_text_centre` | [Pages](#pages) |
@@ -2978,6 +3227,7 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_preset_overwrite` | [Presets](#presets-as-files) |
 | `opus_preset_rename` | [Presets](#presets-as-files) |
 | `opus_preset_source` | [Presets](#preset-sources) |
+| `opus_preset_where` | [Presets](#presets-as-files) |
 | `opus_presets` | [Presets](#presets) |
 | `opus_presets_relist` | [Presets](#preset-sources) |
 | `opus_presets_reload` | [Presets](#presets-as-files) |
@@ -2986,8 +3236,6 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_quick_show` | [Quick pages](#quick-pages) |
 | `opus_rename` | [Files](#files) |
 | `opus_replace` | [Art](#art) |
-| `opus_stats` | [The core's figures](#the-cores-figures) |
-| `opus_stock_screen` | [Art](#art) |
 | `opus_sample` | [Samples](#samples) |
 | `opus_sample_base` | [Samples](#samples) |
 | `opus_sample_sound` | [Samples](#samples) |
@@ -2998,10 +3246,14 @@ Every declaration in `opus_plugin.h`, by name.
 | `opus_sincos` | [Art](#art) |
 | `opus_skip_dry_input` | [Events](#audio-events) |
 | `opus_sound_slot` | [Managers](#managers) |
+| `opus_stats` | [The core's figures](#the-cores-figures) |
+| `opus_stock_screen` | [Art](#art) |
 | `opus_tempo` | [Tempo](#tempo) |
 | `opus_tempo_phase` | [Tempo](#tempo) |
 | `opus_tempo_phase_step` | [Tempo](#tempo) |
 | `opus_text_width` | [Pages](#pages) |
+| `opus_toast` | [Events](#frames) |
+| `opus_toast_cancel` | [Events](#frames) |
 | `opus_types` | [Managers](#managers) |
 
 Structs and types: `struct opl_self` ([The plugin's entry](#the-plugins-entry)); `struct opus_preset_source`

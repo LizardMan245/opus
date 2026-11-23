@@ -2,8 +2,6 @@ opmod     1
 id        opus.bitcrush
 name      Bitcrush
 author    opus
-version   2.0.3
+version   2.0.4
 core      2.0
 adds      effect bitcrush
-checked   emulator 2026-10-16 test_bitcrush (the Opus 2 suite)
-checked   device 2026-10-16 an OP-1, the core dev 11

@@ -1176,4 +1176,16 @@ extern fw_drum_list_pos_t fw_drum_list_pos;
 typedef int fw_synth_key_down_t(void *ctl, unsigned key);
 extern fw_synth_key_down_t fw_synth_key_down;
 
+/* fw_gauge_read_cb: powermgr.cpp battery::gauge_read_cb_2, 0x01A1179C. The battery gauge's
+ * read callback: battery::gauge_poll asks the I2C queue for the LTC2941's registers 0-3
+ * (twi::read_reg(100, 0, 4, cb, 0); the callback's LDIMM at 0x01A11646) and the I2C interrupt
+ * calls it with them: bytes[0] the status (-> B[0x018B62B1]), bytes[2..3] the count, big-
+ * endian (-> [0x018B62F0], x 4 while B[0x018B62B4] is set). A count of 0xFFFF on the fine
+ * count is taken for a run over: control 0xF0 written (the coarse count), the counter written
+ * as the count / 4, B[0x018B62B4] = 1; the poll then raises battmax [0x018B62AC] to the
+ * charge. Interrupt context. Opus's power.c wraps it (power.hooks: a read of all ones
+ * dropped). */
+typedef void fw_gauge_read_cb_t(unsigned char *bytes);
+extern fw_gauge_read_cb_t fw_gauge_read_cb;
+
 #endif

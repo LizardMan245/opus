@@ -19,6 +19,7 @@ says what every plugin keeps to.
 | `docs/rules.md` | The rules every plugin keeps: threads, the audio block, CPU, memory, the screen, files. |
 | `docs/api.md` | Every call the core offers a plugin (`opus_*`), by service. |
 | `docs/manifest.md` | Every line of a plugin's `manifest.txt`. |
+| `docs/controls.md` | What the OP-1 does with each key and encoder on each screen, and what is free for a plugin. |
 | `docs/sharing.md` | The checks before you share a plugin. |
 | `docs/orbit3d.md` | The orbit3d library: 3D line art on a plugin's page. |
 | `sdk/opus_plugin.h` | The core's calls. |
@@ -44,6 +45,10 @@ Synth engines, effects and themes, as the examples show, and much more ([api.md]
   corner, a scope, a clock, the tape position in bars, the current scale's name.
 - **Watching what happens.** Every key and turn after the OS handled it, every tape write before it lands: a tape
   version history, a practice log with the date. Opus's tape undo is built this way.
+- **Files on a USB flash drive.** With a drive plugged into the OP-1, a plugin reads and writes its files: samples
+  brought in from a folder, patches exported, a recording copied out.
+- **Pages a mouse works on.** With a USB mouse plugged in, Opus shows an arrow. A plugin says where its page's
+  controls are, and the wheel, a drag and a click act on them; popups and marks it draws can take clicks too.
 - **The whole mix.** The final stereo master every block: a master limiter, a loudness meter, an analyser.
 - **Small apps.** A plugin can be just a panel in the mods list or a page of its own over T1: a BPM-to-delay
   calculator, setlist notes, stats.

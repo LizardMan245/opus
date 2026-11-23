@@ -305,10 +305,29 @@ void drive_loop(struct ota_fx *f, short *buf, int drive, int g0, int g1, int s)
     f->lp = lp;
 }
 
+volatile unsigned ota_rest_blocks;         /* blocks left as they came, at rest (the tests) */
+
+/* All 64 samples 0. */
+static int silent(const short *buf)
+{
+    int any = 0;
+    for (int i = 0; i < 64; ++i)
+        any |= buf[i];
+    return !any;
+}
+
 void ota_block(struct ota_fx *f, short *buf, const short *par)
 {
     const int drive = knob_h(DRIVE_GAIN, par[OTA_POWER]);
     const int s = f->shape >= 0 && f->shape < OTA_SHAPES ? f->shape : OTA_WARM;
+    if (f->in == 0 && f->out == 0 && f->hp_x == 0 && f->hp_y == 0 && f->lp == 0 && silent(buf)) {
+        /* Silence in, everything at rest: the loop would give silence and leave it all as it is, the gain at its rest
+           (below). The block stays as it came. */
+        const int rest = (4096 * 256) / drive;
+        f->gain = rest < MATCH_MIN ? MATCH_MIN : rest;
+        ++ota_rest_blocks;
+        return;
+    }
     int target, g0 = f->gain;
     if (f->in > SILENT) {                  /* the level in over the drive's level out, from the blocks before */
         const int o = f->out >> 8;

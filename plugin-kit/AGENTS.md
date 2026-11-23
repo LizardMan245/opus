@@ -26,7 +26,9 @@ run the OP-1, they can. So:
   `build/NAME.opmod`; `show FILE.opmod` reads it back as the core will; `svg FILE.svg` checks page art against what
   the OP-1's own SVG parser draws (run it on every SVG a plugin ships). A failure prints `REFUSED:` and why.
 - `docs/getting-started.md` (the compiler, the device steps), `docs/rules.md` (the rules below in full),
-  `docs/api.md` (every `opus_*` call), `docs/manifest.md` (every manifest line), `docs/sharing.md` (the checks).
+  `docs/api.md` (every `opus_*` call), `docs/manifest.md` (every manifest line), `docs/controls.md` (what the OP-1
+  does with each key and encoder on each screen, and what is free: look there before a `uses` line),
+  `docs/sharing.md` (the checks).
 - `sdk/opus_plugin.h` (the core's calls), `sdk/op1fw.h` (the firmware's own functions, `fw_*`) and `sdk/orbit3d.h`
   (the orbit3d library's 3D drawing, `o3_*`, for a plugin with `needs opus.orbit3d`: `docs/orbit3d.md`).
 - `examples/`: four real plugins from Opus 2's starter pack: `opus.halloween` (a theme, no code), `opus.zoom` (a

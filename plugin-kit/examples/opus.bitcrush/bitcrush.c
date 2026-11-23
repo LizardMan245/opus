@@ -48,11 +48,27 @@ void crush_n(struct chan *c, short *buf, int n, u32 inc, int step, int half, int
     c->lp = lp;
 }
 
-/* One channel, n samples in place. Rounding to the step, not truncation. */
+/* All n samples 0. */
+static int silent(const short *buf, int n)
+{
+    int any = 0;
+    for (int i = 0; i < n; ++i)
+        any |= buf[i];
+    return !any;
+}
+
+/* One channel, n samples in place. Rounding to the step, not truncation. Silence in, with the hold at 0 and
+ * the tone within a step of it, gives silence out: the block is left as it is (the tone set to 0, the last step of
+ * its fall) and only the hold's phase moves on, the way the samples would have moved it. */
 static void crush(struct chan *c, short *buf, int n, const short *par)
 {
     const int p0 = clamp15(par[0]), p1 = clamp15(par[1]), p2 = clamp15(par[2]), mix = clamp15(par[3]);
     const u32 inc = RATE_INC[p0 >> 10];
+    if (c->held == 0 && c->lp >= -1 && c->lp <= 1 && silent(buf, n)) {
+        c->lp = 0;
+        c->ph = (c->ph + (u32)n * inc) % 65536u;
+        return;
+    }
     const int bits = 1 + (p1 >> 11), step = 1 << (16 - bits), half = step >> 1;
     const int a = 32767 - ((p2 * 31129) >> 15);   /* tone: the low-pass's coefficient, open at 32767 */
     if (a >= 32767) {

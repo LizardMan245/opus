@@ -203,6 +203,7 @@ USE_INPUTS = ('tempo', 'synth', 'drum', 'tape', 'mixer', 't1', 't2', 't3', 't4',
               'com', 'blue_push', 'green_push', 'white_push', 'orange_push', 'blue_turn', 'green_turn',
               'white_turn', 'orange_turn', 'keyboard', 'fn_hold')
 USE_SCREENS = ('synth', 'drum', 'tape', 'mixer')
+USE_SCREENS += ('list',)
 USE_PAGES = ('t1', 't2', 't3', 't4')
 
 def check_use(use):
@@ -223,8 +224,10 @@ def check_use(use):
         if held not in USE_INPUTS or held.endswith('_turn') or held == 'keyboard' or held == words[0]:
             raise PluginError(f'manifest: uses {use!r}: with KEY (a key held: not a turn, the keyboard or the input)')
         del rest[k:k + 2]
+    allowed = ('shift', 'noshift', 'fn', 'nofn', 'modal') + USE_SCREENS + USE_PAGES
+    allowed += ('over',)
     for w in rest:
-        if w not in ('shift', 'noshift', 'fn', 'nofn', 'modal') + USE_SCREENS + USE_PAGES:
+        if w not in allowed:
             raise PluginError(f'manifest: uses {use!r}: {w!r} (shift, noshift, fn, nofn, modal, a screen: '
                               f'{", ".join(USE_SCREENS)}, or a page: {", ".join(USE_PAGES)})')
     if len(m.group(2)) > 27:
@@ -621,13 +624,16 @@ def author_lines(text):
         return text.split(AUTHOR_END)[0]
     return '\n'.join(raw for raw in text.splitlines() if uncomment(raw).split(' ', 1)[0] not in BUILT)
 
-def without_comments(data):
+def without_comments(data, notice=None):
 
     read_opmod(data)
     man_off, man_len = struct.unpack_from('<II', data, 0x10)
     if man_off != HEADER:
         raise PluginError('the manifest is not first after the header')
     lines = [uncomment(raw) for raw in data[man_off:man_off + man_len].decode('utf-8').splitlines()]
+    if notice:
+        lines = [line for line in lines if not line.startswith('notice ')]
+        lines.append('notice ' + notice)
     manifest = ('\n'.join(line for line in lines if line) + '\n').encode('utf-8')
     old_end = man_off + man_len + (-man_len % 4)
     new = manifest + b'\0' * (-len(manifest) % 4)
@@ -645,8 +651,10 @@ def without_comments(data):
     struct.pack_into('<I', out, 0x0C, 0)
     struct.pack_into('<I', out, 0x0C, zlib.crc32(bytes(out)) & 0xFFFFFFFF)
     a, b = read_opmod(data), read_opmod(bytes(out))
-    if any(a[k] != b[k] for k in a if k not in ('manifest', 'text')) or \
-            read_manifest_built(a['text']) != read_manifest_built(b['text']):
+    expected = read_manifest_built(a['text'])
+    if notice:
+        expected['notice'] = notice
+    if any(a[k] != b[k] for k in a if k not in ('manifest', 'text')) or expected != read_manifest_built(b['text']):
         raise PluginError('the file read back differs beyond its manifest\'s comments')
     return bytes(out)
 
@@ -679,6 +687,10 @@ def core_facts(core=CORE):
     loader, opus_h, effects, fxhost = text('loader.c'), text('opus.h'), text('effects.c'), text('fxhost.c')
     table = loader[loader.index('CORE_NAMES[] = {'):]
     names = set(re.findall(r'NAME\((\w+)\)', table[:table.index('};')]))
+    system = set()
+    if 'SYSTEM_NAMES[] = {' in loader:
+        table = loader[loader.index('SYSTEM_NAMES[] = {'):]
+        system = set(re.findall(r'NAME\((\w+)\)', table[:table.index('};')]))
     fx = [(k.lower(), int(a, 16), bytes(int(b, 16) for b in want.split(',')))
           for a, k, n, want in FX_PLACE_RE.findall(effects)]
     pages = [('jump', int(a, 16), bytes(int(b, 16) for b in want.split(',')))
@@ -690,9 +702,16 @@ def core_facts(core=CORE):
             for k in range(len(expect)):
                 if new is None or new[k] != expect[k]:
                     held[addr + k] = f'the core ({owner}.hooks)'
+    oskeys = None
+    if '#include "oskeys.inc"' in loader:
+        try:
+            import oskeys_table
+            oskeys = oskeys_table.table()
+        except (ImportError, OSError):
+            oskeys = None
     return {'core': (int(re.search(r'#define CORE_MAJOR\s+(\d+)', loader).group(1)),
                      int(re.search(r'#define CORE_MINOR\s+(\d+)', loader).group(1))),
-            'names': names, 'plugins': plugins_cap(opus_h),
+            'names': names, 'system': system, 'oskeys': oskeys, 'plugins': plugins_cap(opus_h),
             'fx': fx, 'pages': pages, 'held': held}
 
 def plugins_cap(opus_h):
@@ -724,8 +743,39 @@ def _uses(lines):
         screen = next((USE_SCREENS.index(w) + 1 for w in words[1:] if w in USE_SCREENS), 0)
         fn = 1 if 'fn' in words[1:] else 2 if 'nofn' in words else 0
         page = next((USE_PAGES.index(w) + 1 for w in words[1:] if w in USE_PAGES), 0)
-        out.append((words[0], shift, screen, 'modal' in words, fn, held, page))
+        over = False
+        over = 'over' in words[1:]
+        out.append((words[0], shift, screen, 'modal' in words, fn, held, page, over))
     return out
+
+def os_use(u, table):
+
+    if table is None:
+        return None
+    import oskeys_table
+    inp, shift, screen, modal, fn, held, page = u[:7]
+    code = oskeys_table.CODES.get(inp)
+    if modal or fn == 1 or code is None:
+        return None
+    with_code = oskeys_table.CODES.get(held, 0) if held else 0
+    contexts, labels, entries = table
+    for e_code, e_shift, e_with, cells in entries:
+        if e_code != code or e_with != with_code or (shift == 1 and not e_shift) or (shift == 2 and e_shift):
+            continue
+        for (_, mode, pg), cell in zip(contexts, cells):
+            if cell and (not screen or (mode == screen and (not page or pg == page))):
+                return labels[cell - 1]
+    return None
+
+def os_clash(f, table, routed=(2, 67)):
+
+    if tuple(f.get('core', (0, 0))) < routed:
+        return None
+    for u in f['uses']:
+        what = None if u[7] else os_use(u, table)
+        if what:
+            return f'{"shift " if u[1] == 1 else ""}{u[0]}: the op-1 {what}'.replace('_', ' ')[:47]
+    return None
 
 def _re_path():
 
@@ -777,6 +827,7 @@ def check_set(paths, ldr=LDR, core=CORE):
         f.update(id=man['id'], version=man['version'], name=man['name'], info=info, ver=_version(man['version']),
                  needs=[(w.split()[0], _version(w.split()[1], 3)) for w in man.get('needs', [])],
                  uses=_uses(man.get('uses', [])), checked=checked_of(man), replaces=man.get('replaces', []),
+                 core=_version(man['core'], 2),
                  kinds={a.split()[0] for a in man.get('adds', []) if a.split() and a.split()[0] in ('engine', 'effect', 'lfo')})
         core_ver = _version(man['core'], 2)
         if core_ver[0] != facts['core'][0] or core_ver[1] > facts['core'][1]:
@@ -816,7 +867,7 @@ def check_set(paths, ldr=LDR, core=CORE):
         info = f['info']
         for n in info['imports']:
             if n not in exports and n not in facts['names'] and n not in deep:
-                return f'needs {n}'
+                return f'system only: {n}' if n in facts['system'] else f'needs {n}'
         need = len(info['image']) + info['zero'] + (info['strings'] if info['exports'] else 0)
         if used[0] + need > FAR_POOL:
             return 'not loaded: no room'
@@ -892,7 +943,9 @@ def check_set(paths, ldr=LDR, core=CORE):
                         progress = True
                     break
             if ready and f['state'] is None:
-                why = clash(f) or load(f)
+                why = clash(f)
+                why = why or os_clash(f, facts['oskeys'])
+                why = why or load(f)
                 f['state'], f['why'] = ('refused', why) if why else ('loads', None)
                 progress = True
     for f in rows:

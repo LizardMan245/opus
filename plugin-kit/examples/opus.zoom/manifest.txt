@@ -2,7 +2,7 @@ opmod     1
 id        opus.zoom
 name      Zoom
 author    opus
-version   1.0.0
-core      2.0
+version   1.1.0
+core      2.67
 adds      the tape view's zoom on shift + white
-uses      white_turn shift tape "zoom the tape view"
+uses      white_turn shift tape over "zoom the tape view"

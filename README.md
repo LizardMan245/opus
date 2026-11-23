@@ -10,9 +10,12 @@ starter pack has all of Opus 1's features as plugins, plus dx (a DX7 voice playe
 outatime (a time-travel synth engine), iter (the OP-1's own hidden engine), a trigger guard for worn keys, a
 Halloween colour theme, and new in beta 4 an LFO matrix, SIM (a drum engine whose page is a physics box), the OP-1's
 own help screen back, endless latch and preset tools (overwrite, rename and delete); beta 4.1 brings a chorus page
-that draws its voices and pitch bend on the plain arrows. Beside the pack: the monitor,
-which shows what the OP-1 and every plugin cost while you hold FN, and the bridge, an alpha, which runs op1r's and
-Hundekraft's synths, effects and sequencers on Opus.
+that draws its voices and pitch bend on the plain arrows. **Beta 5 is the hardware update:** a MIDI keyboard, a flash
+drive or a mouse plugs straight into the OP-1, the whole OP-1 backs up to a flash drive, the battery is looked after
+and flash blocks written off too early come back. Tape undo, preset tools and Fx overdrive are part of Opus itself
+now. Beside the pack: the monitor, which shows what the OP-1 and every plugin cost while you hold FN, the bridge, an
+alpha, which runs op1r's and Hundekraft's synths, effects and sequencers on Opus, Refined, Audivit's palette theme,
+and play as pause.
 
 - **The core:** make the update from your own stock firmware with the patcher at
   **https://opus-op1.pages.dev/patcher/**. It runs in your browser and nothing is uploaded.
@@ -124,8 +127,10 @@ thread on op-forums. Where ideas came from: [CREDITS.md](CREDITS.md).
 
 What's in this repository (the docs and the plugin kit) is [GPL-3.0](LICENSE): use it, change it and share it,
 and what you build on it stays open too. The plugin kit adds two terms under the GPL's section 7: a modified version
-has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, free to use and share. Other plugin sites and firmware need
-LizardMan's OK to host or bundle them; the kit's five examples are GPL-3.0 and free for anyone to host. Their
+has to be marked as different from the original, and it can't use the original plugin's name. The plugins in the releases are © LizardMan, under the Opus binary licence
+(LICENSE-OPUS.txt): free to use and to pass on to someone, with the licence beside them. Offering them for download
+anywhere else (another site, plugin library or repository) or bundling them with other firmware needs LizardMan's
+OK. No disassembly, no ports. The kit's five examples are GPL-3.0 and free for anyone to host. Their
 source is not published yet, apart from the kit's five examples. The source of the core and the other plugins will
 be published once it's properly put together. There's no date yet, but it isn't meant to stay closed. dx contains
 code under the Apache License 2.0 (its LICENSE and NOTICE are in the starter pack). The firmware updates and the patchers' data are © LizardMan, all

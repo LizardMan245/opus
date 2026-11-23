@@ -2,7 +2,7 @@ opmod     1
 id        opus.outatime
 name      Outatime
 author    opus
-version   1.5.0
+version   1.5.1
 core      2.21
 priority  high
 adds      engine outatime

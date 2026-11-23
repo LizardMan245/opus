@@ -253,7 +253,8 @@ def build(mod_dir, out_dir, tc=None, hits=None, defines=(), count=True):
     vmas = []
     for head, flags in zip(lines, lines[1:]):
         f = head.split()
-        if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and int(f[2], 16) and int(f[3], 16) < FAR_BASE:
+        has_bytes = 'LOAD' in flags.split(', ')
+        if len(f) == 7 and f[0].isdigit() and 'ALLOC' in flags and has_bytes and int(f[2], 16) and int(f[3], 16) < FAR_BASE:
             vmas.append(int(f[3], 16))
     if not vmas:
         raise BuildError(f'{elf}: no allocated section')
